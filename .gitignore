@@ -1,0 +1,9 @@
+# cache
+build/
+.vscode/
+
+# 3rd
+3rdparty/
+SherphyEngine/
+
+
