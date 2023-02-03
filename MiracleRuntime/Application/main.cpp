@@ -3,7 +3,7 @@
 
 int main()
 {
-    Miracle::TriangleApplication app;
+    SherphyMiracle::TriangleApplication app;
         
     try
     {

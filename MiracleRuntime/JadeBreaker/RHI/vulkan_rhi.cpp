@@ -7,7 +7,7 @@
 #define WIDTH 800
 #define HEIGHT 600
 
-namespace Miracle{
+namespace SherphyEngine(Miracle){
 
     void TriangleApplication::initWindow()
     {   
@@ -16,7 +16,7 @@ namespace Miracle{
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-        m_window = glfwCreateWindow(WIDTH, HEIGHT, "vulkan", nullptr, nullptr);
+        m_window = glfwCreateWindow(WIDTH, HEIGHT, "Sherphy_Engine", nullptr, nullptr);
     }
 
     void TriangleApplication::createInstance()
@@ -38,6 +38,8 @@ namespace Miracle{
         vk_app_info.pNext = nullptr;
 
         // Not Optional
+        // TODO add a debugCallBack to create_info.pNext to debug and validate
+        // SEE  https://vulkan-tutorial.com/Drawing_a_triangle/Setup/Validation_layers
         VkInstanceCreateInfo create_info{};
 
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -124,6 +126,61 @@ namespace Miracle{
     void TriangleApplication::initVulkan()
     {
         createInstance();
+        //setupDebugMessenger();
+        
+    }
+
+    void TriangleApplication::pickPhysicalDevice()
+    {
+        uint32_t device_count = 0;
+        vkEnumeratePhysicalDevices(m_instance, &device_count, nullptr);
+        std::vector<VkPhysicalDevice> devices(device_count);
+        vkEnumeratePhysicalDevices(m_instance, &device_count, devices.data());
+
+        if (device_count == 0)
+        {
+            throw std::runtime_error("Failed to Find Graphic Device with Vulkan Support");
+        }
+
+        for (VkPhysicalDevice& device : devices)
+        {
+            if (isDeviceSuitable(device)) 
+            {
+                m_physicalDevice = device;
+                break;
+            }
+        }
+    }
+
+    // TODO test if device suitable
+    bool TriangleApplication::isDeviceSuitable(VkPhysicalDevice& device) {
+        QueueFamilyIndices indices = findQueueFamilies(device);
+
+        return indices.isComplete();
+    }
+
+    QueueFamilyIndices TriangleApplication::findQueueFamilies(VkPhysicalDevice& device) 
+    {
+        QueueFamilyIndices indices;
+        uint32_t queue_family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
+
+        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
+
+        for (size_t i = 0; i < queue_families.size(); i++) {
+            if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) 
+            {
+                indices.graphics_family = i;
+            }
+
+            if (indices.isComplete()) 
+            {
+                break;
+            }
+        }
+
+        return indices;
     }
 
     void TriangleApplication::mainLoop()
