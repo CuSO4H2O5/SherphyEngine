@@ -26,6 +26,7 @@ namespace SherphyEngine(Miracle){
         std::vector<VkExtensionProperties> m_extensions;
         uint32_t m_extensions_count;
 
+        VkDevice m_device;
         VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
 
         std::vector<const char*> m_validation_layers = {
@@ -45,6 +46,7 @@ namespace SherphyEngine(Miracle){
         void initWindow();
         void initVulkan();
         void pickPhysicalDevice();
+        void createLogicalDevice();
         bool isDeviceSuitable(VkPhysicalDevice& device);
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice& device);
 

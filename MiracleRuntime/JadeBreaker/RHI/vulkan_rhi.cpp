@@ -152,6 +152,16 @@ namespace SherphyEngine(Miracle){
         }
     }
 
+    void TriangleApplication::createLogicalDevice()
+    {
+        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+        queueCreateInfo.queueCount = 1;
+    }
+
     // TODO test if device suitable
     bool TriangleApplication::isDeviceSuitable(VkPhysicalDevice& device) {
         QueueFamilyIndices indices = findQueueFamilies(device);
