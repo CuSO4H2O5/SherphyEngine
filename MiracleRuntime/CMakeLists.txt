@@ -1,13 +1,12 @@
-set(TARGET_NAME MiracleRuntime)
 
-set_target_properties(${TARGET_NAME} PROPERTIES CXX_STANDARD CMAKE_CXX_STANDARD)
-set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Miracle")
+set(TARGET_NAME Miracle_Runtime)
 
 file(GLOB_RECURSE HEADERS "*.h")
 file(GLOB_RECURSE SOURCES "*.cpp")
-
 # add_library(${TARGET_NAME} ${HEADERS} ${SOURCES})
 add_executable(${TARGET_NAME} ${HEADERS} ${SOURCES})
+
+set_target_properties(${TARGET_NAME} PROPERTIES FOLDER "Miracle")
 
 # precompile headers
 file(GLOB_RECURSE PRECOMPILE_HEADERS "./Soul/PreCompile/*.h")

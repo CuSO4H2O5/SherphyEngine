@@ -1,8 +1,7 @@
 #include "LogMessagerImpl.h"
 #include "LogMessagerManager.h"
 
-namespace SherphyEngine(Miracle)
-{
+namespace Sherphy {
     LogMessager* createLogMessager()
     {
         return new LogMessagerImpl;

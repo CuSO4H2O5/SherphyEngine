@@ -1,6 +1,6 @@
 #include <string>
 
-namespace SherphyEngine(Miracle){
+namespace Sherphy {
     enum class WarningStage
     {
         Normal, // just debug message
@@ -13,13 +13,12 @@ namespace SherphyEngine(Miracle){
     class LogMessager
     {
         public:
-            LogMessager();
-            ~LogMessager();
-            virtual bool logMessage(std::string message, WarningStage stage);
+            LogMessager() {};
+            virtual ~LogMessager() = 0;
+            virtual bool logMessage(std::string message, WarningStage stage) = 0;
 
-            virtual bool logPreviousMessage();
-            virtual bool logPreviousFatalMessage();
+            virtual bool logPreviousMessage() = 0;
+            virtual bool logPreviousFatalMessage() = 0;
         private:
     };
 }
-

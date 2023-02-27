@@ -2,8 +2,7 @@
 #include <iostream>
 #include <format>
 
-namespace SherphyEngine(Miracle)
-{
+namespace Sherphy {
     using namespace std;
     bool LogMessagerImpl::logMessage(std::string message, WarningStage stage)
     {
@@ -12,12 +11,17 @@ namespace SherphyEngine(Miracle)
         return true;
     }
 
-    bool LogMessagerImpl::logPreviousMessage() 
+    bool LogMessagerImpl::logPreviousMessage()
     {
         return true;
     }
 
-    LogMessagerImpl::LogMessagerImpl() 
+    bool LogMessagerImpl::logPreviousFatalMessage()
+    {
+        return true;
+    }
+
+    LogMessagerImpl::LogMessagerImpl()
     {
     }
 

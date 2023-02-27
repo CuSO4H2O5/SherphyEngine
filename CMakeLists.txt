@@ -27,7 +27,7 @@ endif()
 
 # --- Options ---
 option(UsingEASTL "If using eastl to faster this project development" ON)
-option(Sherphy_CMAKE_DEBUG "Take on CMake Debug Message" ON)
+option(Sherphy_CMAKE_DEBUG "Take on CMake Debug Message" OFF)
 
 # --- Add Lib Path ---
 if(WIN32)
@@ -44,7 +44,5 @@ endif()
 
 
 add_subdirectory(3rdparty)
-
 add_subdirectory(MiracleRuntime)
-
 add_subdirectory(Sherphy_Lan)

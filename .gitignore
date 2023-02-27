@@ -6,4 +6,7 @@ build/
 3rdparty/
 SherphyEngine/
 
+#ref
+SherphyEngineReference/
+
 

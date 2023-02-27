@@ -1,9 +1,9 @@
-#include "LogMessager.h"
+#include "LogMessagerManager.h"
 //typedef bool SBool;
 //
 //const SBool k_false = false;
 //const SBool k_true = true;
-namespace SherphyEngine(Miracle) {
+namespace Sherphy{
     #ifdef SHERPHY_DEBUG
     #define SherphyAssert(_Expression) ((void) 0)
     #else
