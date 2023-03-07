@@ -1,31 +1,26 @@
-#include "LogMessagerImpl.h"
+#include "LogMessager.h"
 #include <iostream>
 #include <format>
 
 namespace Sherphy {
-    using namespace std;
-    bool LogMessagerImpl::logMessage(std::string message, WarningStage stage)
+    bool LogMessager::logMessage(std::string message, WarningStage stage)
     {
         // m_message_box.push_back();
-        cout << message << endl;
+        std::cout << message << std::endl;
         return true;
     }
 
-    bool LogMessagerImpl::logPreviousMessage()
+    bool LogMessager::logPreviousMessage()
     {
         return true;
     }
 
-    bool LogMessagerImpl::logPreviousFatalMessage()
+    bool LogMessager::logPreviousFatalMessage()
     {
         return true;
     }
 
-    LogMessagerImpl::LogMessagerImpl()
-    {
-    }
-
-    LogMessagerImpl::~LogMessagerImpl()
+    LogMessager::~LogMessager()
     {
     }
 }

@@ -1,6 +1,9 @@
 #include <string>
+#include "RingBuffer.h"
 
 namespace Sherphy {
+    const size_t message_box_size = 16;
+
     enum class WarningStage
     {
         Normal, // just debug message
@@ -14,11 +17,12 @@ namespace Sherphy {
     {
         public:
             LogMessager() {};
-            virtual ~LogMessager() = 0;
-            virtual bool logMessage(std::string message, WarningStage stage) = 0;
+            virtual ~LogMessager();
+            virtual bool logMessage(std::string message, WarningStage stage);
 
-            virtual bool logPreviousMessage() = 0;
-            virtual bool logPreviousFatalMessage() = 0;
+            virtual bool logPreviousMessage();
+            virtual bool logPreviousFatalMessage();
         private:
+            RingBufferString m_message_box[message_box_size];
     };
 }

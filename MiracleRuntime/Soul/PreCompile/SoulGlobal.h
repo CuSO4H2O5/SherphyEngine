@@ -1,11 +1,14 @@
-#include "LogMessagerManager.h"
+#include "Soul/LogMessagerManager.h"
+#include "Soul/PreCompile/predefinedMacro.h"
+#include "Soul/Allocator/SherphyAllocatorCallBack.h"
 //typedef bool SBool;
 //
 //const SBool k_false = false;
 //const SBool k_true = true;
 namespace Sherphy{
     #ifdef SHERPHY_DEBUG
-    #define SherphyAssert(_Expression) ((void) 0)
+    #define SherphyAssert(_Expression)
+        if(_Expression) ((void) 0)
     #else
     #define SherphyAssert(_Expression)
     #endif
@@ -23,4 +26,6 @@ namespace Sherphy{
             return false; \
         } \
 
+    #define SHERPHY_ALLOC(_Size) SherphyGetAllocatorCallback()->allocate(_Size, nullptr, __FILE__, __LINE__);
+    #define SHERPHY_DEALLOC(_Ptr) SherphyGetAllocatorCallback()->deallocate(_Ptr);
 }

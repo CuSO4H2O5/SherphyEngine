@@ -1,11 +1,8 @@
-#include "LogMessagerImpl.h"
+#include "LogMessager.h"
 #include "LogMessagerManager.h"
 
 namespace Sherphy {
-    LogMessager* createLogMessager()
-    {
-        return new LogMessagerImpl;
-    }
+    static LogMessager* s_lognn;
 
     SherphyNoReturn void LogMessage(std::string message, WarningStage stage)
     {
