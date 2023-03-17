@@ -1,4 +1,4 @@
-
+#pragma once
 
 #if !defined(SherphyNoReturn)
 	#if defined(_MSC_VER) && (_MSC_VER >=1300)

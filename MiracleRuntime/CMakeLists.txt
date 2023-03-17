@@ -1,6 +1,5 @@
 
 set(TARGET_NAME Miracle_Runtime)
-
 file(GLOB_RECURSE HEADERS "*.h")
 file(GLOB_RECURSE SOURCES "*.cpp")
 # add_library(${TARGET_NAME} ${HEADERS} ${SOURCES})
@@ -30,3 +29,4 @@ target_include_directories(
   $<INSTALL_INTERFACE:include/${TARGET_NAME}-${PROJECT_VERSION}>
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+

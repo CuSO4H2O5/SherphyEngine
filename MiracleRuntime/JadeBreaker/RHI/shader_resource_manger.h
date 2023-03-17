@@ -1,7 +1,8 @@
+#pragma once
 #include <string>
 #include <vector>
 #include <fstream>
-
+#include <Soul/PreCompile/SoulGlobal.h>
 
 namespace Sherphy 
 {

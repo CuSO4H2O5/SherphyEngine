@@ -1,3 +1,4 @@
+#pragma once
 #include <cstdio>
 #include <malloc.h>
 
@@ -24,12 +25,7 @@ namespace Sherphy
             _aligned_free(ptr);
         }
     };
-    DefaultAllocatorCallback g_defaultAllocatorCallback;
-
-    SherphyAllocatorCallBack* g_SherphyAllocatorCallBack = &g_defaultAllocatorCallback;
+    SherphyAllocatorCallBack* SherphyGetAllocatorCallback();
 }
 
-//////// Global API implementation ////////
-Sherphy::SherphyAllocatorCallBack* SherphyGetAllocatorCallback(){
-    return Sherphy::g_SherphyAllocatorCallBack;
-}
+

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <cstdio>
 #include <cstdlib>
@@ -21,11 +23,21 @@ namespace Sherphy{
         }
     };
 
+    enum class PipeLineType {
+        Normal,
+        RayTracing
+    };
+
+    enum class RenderPassType {
+        Normal,
+        RayTracing
+    };
+
     struct SwapChainSupportDetails 
     {
-        VkSurfaceCapabilitiesKHR capabilities;
-        std::vector<VkSurfaceFormatKHR> formats;
-        std::vector<VkPresentModeKHR> present_modes;
+        VkSurfaceCapabilitiesKHR capabilities{};
+        std::vector<VkSurfaceFormatKHR> formats{};
+        std::vector<VkPresentModeKHR> present_modes{};
     };
 
     class TriangleApplication
@@ -33,8 +45,8 @@ namespace Sherphy{
     private:
         //----------------- Vk Device Part ---------------------------
         VkInstance m_instance;
-        std::vector<VkExtensionProperties> m_extensions;
-        uint32_t m_extensions_count;
+        //std::vector<VkExtensionProperties> m_extensions;
+        //uint32_t m_extensions_count;
 
         VkDevice m_device;
         VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
@@ -70,6 +82,7 @@ namespace Sherphy{
         VkExtent2D m_extent;
 
         std::vector<VkImageView> m_swap_chain_image_views;
+        std::vector<VkFramebuffer> m_swap_chain_frame_buffers;
 
         //------------------ Graphics PipeLine -------------------------------
         std::vector<VkDynamicState> m_dynamic_states = {
@@ -80,9 +93,20 @@ namespace Sherphy{
         VkPipelineLayout m_pipeline_layout;
         VkPipeline m_graphics_pipeline;
 
+        //------------------ Command Buffer ----------------------------------
+        VkCommandPool m_command_pool;
+        VkCommandBuffer m_command_buffer;
+
+        //------------------ Draw Frame --------------------------------------
+        VkSemaphore m_image_available_semaphore;
+        VkSemaphore m_render_finished_semaphore;
+        VkFence m_in_flight_fence;
 
         //------------------ GLFW Interface ----------------------------------
         GLFWwindow* m_window;
+
+        //------------------ Debug -------------------------------------------
+        VkDebugUtilsMessengerEXT m_debug_messenger;
 
     public:
         void run();
@@ -96,6 +120,14 @@ namespace Sherphy{
         void createLogicalDevice();
         void createSwapChain();
         void createImageViews();
+        void createRenderPass(RenderPassType type);
+        void createGraphicsPipeline(PipeLineType type);
+        void createFrameBuffers();
+        void createCommandPool();
+        void createCommandBuffer();
+        void recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index);
+        void drawFrame();
+        void createSyncObjects();
 
         void createRenderPassNormal();
         void createGraphicsPipelineNormal();
@@ -106,6 +138,10 @@ namespace Sherphy{
         bool isDeviceSuitable(VkPhysicalDevice& device);
         bool checkDeviceExtensionSupport(VkPhysicalDevice& device);
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice& device);
+        void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create_info);
+        VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
+        void setupDebugMessenger();
+        void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
 
 
         void mainLoop();

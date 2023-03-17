@@ -1,4 +1,5 @@
-#include <string>
+#pragma once
+#include "Soul/PreCompile/predefinedMacro.h"
 #include "RingBuffer.h"
 
 namespace Sherphy {
@@ -23,6 +24,9 @@ namespace Sherphy {
             virtual bool logPreviousMessage();
             virtual bool logPreviousFatalMessage();
         private:
-            RingBufferString m_message_box[message_box_size];
+            std::string m_message_box[message_box_size];
     };
+
+    LogMessager* GetLogMessagerInstance();
+    SherphyNoReturn void LogMessage(std::string message, WarningStage stage);
 }

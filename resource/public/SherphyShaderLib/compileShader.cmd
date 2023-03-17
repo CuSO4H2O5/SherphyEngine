@@ -1,0 +1,2 @@
+I:\SherphyEngine\3rdparty\VulkanSDK\bin\glslc.exe I:\SherphyEngine\resource\public\SherphyShaderLib\GLSL\Normal\SimpleTestTriangle.vert -o I:\SherphyEngine\resource\public\SherphyShaderLib\SPV\Normal\SimpleTestTriangle_vert.spv
+I:\SherphyEngine\3rdparty\VulkanSDK\bin\glslc.exe I:\SherphyEngine\resource\public\SherphyShaderLib\GLSL\Normal\SimpleTestTriangle.frag -o I:\SherphyEngine\resource\public\SherphyShaderLib\SPV\Normal\SimpleTestTriangle_frag.spv

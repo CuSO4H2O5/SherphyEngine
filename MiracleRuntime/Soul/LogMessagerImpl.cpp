@@ -1,8 +1,9 @@
 #include "LogMessager.h"
 #include <iostream>
-#include <format>
+//#include <format>
 
 namespace Sherphy {
+    static LogMessager s_lognn;
     bool LogMessager::logMessage(std::string message, WarningStage stage)
     {
         // m_message_box.push_back();
@@ -22,5 +23,14 @@ namespace Sherphy {
 
     LogMessager::~LogMessager()
     {
+    }
+
+    LogMessager* GetLogMessagerInstance()
+    {
+        return &s_lognn;
+    }
+    SherphyNoReturn void LogMessage(std::string message, WarningStage stage)
+    {
+        GetLogMessagerInstance()->logMessage(message, stage);
     }
 }

@@ -1,3 +1,4 @@
+#pragma once
 #include <EASTL/bonus/ring_buffer.h>
 #include <string>
 
