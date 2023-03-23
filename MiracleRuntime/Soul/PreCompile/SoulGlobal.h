@@ -44,4 +44,5 @@ namespace Sherphy{
 
     #define SHERPHY_ALLOC(_Size) SherphyGetAllocatorCallback()->allocate(_Size, nullptr, __FILE__, __LINE__);
     #define SHERPHY_DEALLOC(_Ptr) SherphyGetAllocatorCallback()->deallocate(_Ptr);
+    #define SHERPHY_MEMCPY(_Dst, _Src, _Size) SherphyGetAllocatorCallback()->_memcpy(_Dst, _Src, _Size);
 }

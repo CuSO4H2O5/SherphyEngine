@@ -30,6 +30,7 @@ option(UsingEASTL "If using eastl to faster this project development" ON)
 option(Sherphy_CMAKE_DEBUG "Take on CMake Debug Message" OFF)
 
 # --- Add Lib Path ---
+set(glm_DIR ${3RD_DIR}/glm/glm)
 if(WIN32)
   if(WIN64)
     set(vulkan_lib ${3RD_DIR}/VulkanSDK/lib/Win64/vulkan-1.lib)

@@ -1,17 +1,15 @@
 #pragma once
 
+#include "rendering_math.h"
+
 #include <vector>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <optional>
 
-// #include <vulkan/vulkan.h>
-//#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-//#define GLFW_EXPOSE_NATIVE_WIN32
-//#include <GLFW/glfw3native.h>
 
 namespace Sherphy{
     struct QueueFamilyIndices {
@@ -24,7 +22,9 @@ namespace Sherphy{
     };
 
     enum class PipeLineType {
+        TriangleTest,
         Normal,
+        Uniform,
         RayTracing
     };
 
@@ -97,6 +97,23 @@ namespace Sherphy{
         VkCommandPool m_command_pool;
         VkCommandBuffer m_command_buffer;
 
+        //------------------ Rendering Buffers -------------------------------
+        VkBuffer m_vertex_buffer;
+        VkDeviceMemory m_vertex_buffer_memory;
+        VkBuffer m_index_buffer;
+        VkDeviceMemory m_index_buffer_memory;
+
+        //------------------ Submit data -------------------------------------
+        const std::vector<VkVertex> m_vertices = {
+            {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+            {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+            {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+            {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+        };
+        const std::vector<uint16_t> m_indices = {
+            0, 1, 2, 2, 3, 0
+        };
+
         //------------------ Draw Frame --------------------------------------
         VkSemaphore m_image_available_semaphore;
         VkSemaphore m_render_finished_semaphore;
@@ -121,16 +138,34 @@ namespace Sherphy{
         void createSwapChain();
         void createImageViews();
         void createRenderPass(RenderPassType type);
-        void createGraphicsPipeline(PipeLineType type);
+        void createGraphicsPipeline(PipeLineType type, 
+                                    std::vector<char>& vertex_shader, 
+                                    std::vector<char>& fragment_shader);
         void createFrameBuffers();
         void createCommandPool();
+        void createBuffer(VkDeviceSize size, 
+                          VkBufferUsageFlags usage, 
+                          VkMemoryPropertyFlags properties, 
+                          VkBuffer& buffer, 
+                          VkDeviceMemory& bufferMemory);
+        void createVertexBuffer();
+        void createIndexBuffer();
+        void copyBufferImmediate(VkBuffer src_buffer,
+                                VkBuffer dst_buffer,
+                                VkDeviceSize size);
         void createCommandBuffer();
-        void recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index);
+        void recordCommandBuffer(VkCommandBuffer command_buffer,
+                                 uint32_t image_index);
         void drawFrame();
         void createSyncObjects();
 
         void createRenderPassNormal();
-        void createGraphicsPipelineNormal();
+        void createGraphicsPipelineNormal(std::vector<char>& vertex_shader,
+                                          std::vector<char>& fragment_shader);
+        void createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader, 
+                                                std::vector<char>& fragment_shader);
+        void createGraphicsPipelineUniform(std::vector<char>& vertex_shader, 
+                                           std::vector<char>& fragment_shader);
         VkShaderModule createShaderModule(const std::vector<char>& code);
 
 
@@ -138,11 +173,16 @@ namespace Sherphy{
         bool isDeviceSuitable(VkPhysicalDevice& device);
         bool checkDeviceExtensionSupport(VkPhysicalDevice& device);
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice& device);
+        uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties);
         void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create_info);
-        VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
+        VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, 
+                                              const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, 
+                                              const VkAllocationCallbacks* pAllocator, 
+                                              VkDebugUtilsMessengerEXT* pDebugMessenger);
         void setupDebugMessenger();
-        void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
-
+        void DestroyDebugUtilsMessengerEXT(VkInstance instance, 
+                                           VkDebugUtilsMessengerEXT debugMessenger, 
+                                           const VkAllocationCallbacks* pAllocator);
 
         void mainLoop();
         void createInstance();

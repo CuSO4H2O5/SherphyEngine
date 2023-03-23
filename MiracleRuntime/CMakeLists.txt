@@ -28,5 +28,6 @@ target_include_directories(
   PUBLIC $<BUILD_INTERFACE:${SHERPHY_ENGINE_ROOT}>
   $<INSTALL_INTERFACE:include/${TARGET_NAME}-${PROJECT_VERSION}>
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${glm_DIR}
 )
 
