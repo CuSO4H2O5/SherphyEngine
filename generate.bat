@@ -1,0 +1,1 @@
+cmake -S . -B build -DSherphy_CMAKE_DEBUG=1

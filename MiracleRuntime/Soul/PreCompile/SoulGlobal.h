@@ -1,7 +1,9 @@
 #pragma once
 #include "Soul/LogMessager.h"
+#include "Soul/Math/MathPack.h"
 #include "Soul/Allocator/SherphyAllocatorCallBack.h"
-//typedef bool SBool;
+#include <stdexcept>
+typedef void (*func_ptr)();
 //
 //const SBool k_false = false;
 //const SBool k_true = true;
@@ -18,6 +20,12 @@ namespace Sherphy{
             throw std::runtime_error(log); \
         } \
 
+    #define SHERPHY_RETURN_NULLPTR_IF_FALSE_WITH_LOG_ERROR(x, log) \
+        if(!x) \
+        { \
+            LogMessage(log, WarningStage::Medium); \
+            return nullptr; \
+        } \
 
     #define SHERPHY_RETURN_FALSE_IF_NULL(x, log) \
         if(x == nullptr) \

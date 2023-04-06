@@ -1,16 +1,19 @@
 #include "vulkan_rhi.h"
-#include "shader_resource_manger.h"
+#include "Soul/Object.h"
+#include "Resource/FileSystem.h"
+#include "Soul/GlobalContext/GlobalContext.h"
 
 #include <string.h>
 #include <algorithm>
+#include <chrono>
 #include <set>
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+const uint32_t WIDTH = 800, HEIGHT = 600;
+const int MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace Sherphy{
 
-    void TriangleApplication::initWindow()
+    void VulkanRHI::initWindow()
     {   
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -25,14 +28,14 @@ namespace Sherphy{
         return VK_FALSE;
     }
 
-    void TriangleApplication::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks* pAllocator) {
+    void VulkanRHI::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks* pAllocator) {
         auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
         if (func != nullptr) {
             func(instance, debug_messenger, pAllocator);
         }
     }
 
-    void TriangleApplication::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create_info) {
+    void VulkanRHI::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create_info) {
         create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
         create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
@@ -40,7 +43,7 @@ namespace Sherphy{
         create_info.pfnUserCallback = debugCallback;
     }
 
-    void TriangleApplication::createInstance()
+    void VulkanRHI::createInstance()
     {
         if (m_enable_validation_layer)
         {
@@ -84,12 +87,6 @@ namespace Sherphy{
 // VkResult result = ;
         SHERPHY_EXCEPTION_IF_FALSE(vkCreateInstance(&create_info, nullptr, &m_instance) == VK_SUCCESS, "create vk instance failed!\n");
 
-        //// update extensions properties
-        //vkEnumerateInstanceExtensionProperties(nullptr, &m_extensions_count, nullptr);
-        //m_extensions.clear();
-        //m_extensions.resize(m_extensions_count);
-        //vkEnumerateInstanceExtensionProperties(nullptr, &m_extensions_count, m_extensions.data());
-
 #ifdef SHERPHY_DEBUG
         std::cout << "available extensions:\n";
 
@@ -100,7 +97,7 @@ namespace Sherphy{
 
     }
 
-    VkResult TriangleApplication::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
+    VkResult VulkanRHI::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
         auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
         if (func != nullptr) {
             return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
@@ -110,7 +107,7 @@ namespace Sherphy{
         }
     }
 
-    void TriangleApplication::setupDebugMessenger() {
+    void VulkanRHI::setupDebugMessenger() {
         SHERPHY_RETURN_IF_FALSE(m_enable_validation_layer, "No Validation Layer Debug Info");
 
         VkDebugUtilsMessengerCreateInfoEXT createInfo;
@@ -119,7 +116,7 @@ namespace Sherphy{
         SHERPHY_EXCEPTION_IF_FALSE(CreateDebugUtilsMessengerEXT(m_instance, &createInfo, nullptr, &m_debug_messenger) == VK_SUCCESS, "failed to set up debug messenger!");
     }
 
-    std::vector<const char*> TriangleApplication::getRequiredExtensions()
+    std::vector<const char*> VulkanRHI::getRequiredExtensions()
     {
         uint32_t glfwExtensionsCount = 0;
         const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
@@ -134,7 +131,7 @@ namespace Sherphy{
         return extensions;
     }
 
-    bool TriangleApplication::checkValidationLayerSupport()
+    bool VulkanRHI::checkValidationLayerSupport()
     {
         uint32_t layer_count;
         vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
@@ -160,7 +157,7 @@ namespace Sherphy{
         return true;
     }
 
-    void TriangleApplication::initVulkan()
+    void VulkanRHI::initVulkan()
     {
         createInstance();
         setupDebugMessenger();
@@ -171,21 +168,152 @@ namespace Sherphy{
         createSwapChain();
         createImageViews();
         createRenderPass(RenderPassType::Normal);
-        //std::vector<char> vertex_shader = SPVReader::readFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_vert.spv");
-        //std::vector<char> fragment_shader = SPVReader::readFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_frag.spv");
+        createDescriptorSetLayout();
+        //std::vector<char> vertex_shader = FileSystem::readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_vert.spv");
+        //std::vector<char> fragment_shader = FileSystem::readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_frag.spv");
         //createGraphicsPipeline(PipeLineType::TriangleTest, vertex_shader, fragment_shader);
-        std::vector<char> vertex_shader = SPVReader::readFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalShader_vert.spv");
-        std::vector<char> fragment_shader = SPVReader::readFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalColorOutput_frag.spv");
+        std::vector<char> vertex_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalShader_vert.spv");
+        std::vector<char> fragment_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalColorOutput_frag.spv");
         createGraphicsPipeline(PipeLineType::Normal, vertex_shader, fragment_shader);
-        createFrameBuffers();
         createCommandPool();
+        createDepthResources();
+        createFrameBuffers();
+        createTextureImage();
+        createTextureImageView();
+        createTextureSampler();
         createVertexBuffer();
         createIndexBuffer();
+        createUniformBuffers();
+        createDescriptorPool();
+        createDescriptorSets();
         createCommandBuffer();
         createSyncObjects();
     }
 
-    void TriangleApplication::createBuffer(VkDeviceSize size, 
+    void VulkanRHI::createDescriptorSets() 
+    {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, m_descriptor_set_layout);
+        VkDescriptorSetAllocateInfo alloc_info{};
+        alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        alloc_info.descriptorPool = m_descriptor_pool;
+        alloc_info.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        alloc_info.pSetLayouts = layouts.data();
+
+        m_descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
+        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateDescriptorSets(m_device, &alloc_info, m_descriptor_sets.data()) == VK_SUCCESS, "failed to allocate descriptor sets!");
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            VkDescriptorBufferInfo buffer_info{};
+            buffer_info.buffer = m_uniform_buffers[i];
+            buffer_info.offset = 0;
+            buffer_info.range = sizeof(VkUniformBufferObject);
+
+            VkDescriptorImageInfo image_info{};
+            image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            image_info.imageView = m_texture_image_view;
+            image_info.sampler = m_sampler;
+
+            std::array<VkWriteDescriptorSet, 2> descriptor_write{};
+            descriptor_write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptor_write[0].dstSet = m_descriptor_sets[i];
+            descriptor_write[0].dstBinding = 0;
+            descriptor_write[0].dstArrayElement = 0;
+            descriptor_write[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptor_write[0].descriptorCount = 1;
+            descriptor_write[0].pBufferInfo = &buffer_info;
+
+            descriptor_write[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptor_write[1].dstSet = m_descriptor_sets[i];
+            descriptor_write[1].dstBinding = 1;
+            descriptor_write[1].dstArrayElement = 0;
+            descriptor_write[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            descriptor_write[1].descriptorCount = 1;
+            descriptor_write[1].pImageInfo = &image_info;
+
+            vkUpdateDescriptorSets(m_device, static_cast<uint32_t>(descriptor_write.size()), descriptor_write.data(), 0, nullptr);
+        }
+    }
+
+    void VulkanRHI::createDescriptorPool() 
+    {
+        std::array<VkDescriptorPoolSize, 2> pool_size{};
+        pool_size[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        pool_size[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        pool_size[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        pool_size[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        VkDescriptorPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.poolSizeCount = static_cast<uint32_t>(pool_size.size());
+        pool_info.pPoolSizes = pool_size.data();
+        pool_info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorPool(m_device, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "failed to create descriptor pool!");
+    }
+
+    void VulkanRHI::createUniformBuffers()
+    {
+        VkDeviceSize buffer_size = sizeof(VkUniformBufferObject);
+
+        m_uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+        m_uniform_buffers_memory.resize(MAX_FRAMES_IN_FLIGHT);
+        m_uniform_buffers_mapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_uniform_buffers[i], m_uniform_buffers_memory[i]);
+
+            vkMapMemory(m_device, m_uniform_buffers_memory[i], 0, buffer_size, 0, &m_uniform_buffers_mapped[i]);
+        }
+    }
+
+
+    //TODO be control
+    void VulkanRHI::updateUniformBuffer(uint32_t current_image)
+    {
+        static auto start_time = std::chrono::high_resolution_clock::now();
+
+        auto current_time = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+
+        Vec3 camera_pos = {};
+
+        VkUniformBufferObject ubo{};
+        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.proj = glm::perspective(glm::radians(45.0f), m_extent.width / (float)m_extent.height, 0.1f, 10.0f);
+        ubo.proj[1][1] *= -1;
+
+        memcpy(m_uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
+    }
+
+    void VulkanRHI::createDescriptorSetLayout() 
+    {
+        VkDescriptorSetLayoutBinding ubo_layout_binding{};
+        ubo_layout_binding.binding = 0;
+        ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        ubo_layout_binding.descriptorCount = 1;
+        ubo_layout_binding.pImmutableSamplers = nullptr;
+        ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        VkDescriptorSetLayoutBinding sampler_layout_binding{};
+        sampler_layout_binding.binding = 1;
+        sampler_layout_binding.descriptorCount = 1;
+        sampler_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        sampler_layout_binding.pImmutableSamplers = nullptr;
+        sampler_layout_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        std::array<VkDescriptorSetLayoutBinding, 2> bindings = { ubo_layout_binding, sampler_layout_binding };
+        VkDescriptorSetLayoutCreateInfo layout_info{};
+        layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layout_info.bindingCount = bindings.size();
+        layout_info.pBindings = bindings.data();
+
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS,
+            "failed to create descriptor set layout!");
+    }
+
+    void VulkanRHI::createBuffer(VkDeviceSize size, 
                                            VkBufferUsageFlags usage, 
                                            VkMemoryPropertyFlags properties, 
                                            VkBuffer& buffer, 
@@ -212,7 +340,8 @@ namespace Sherphy{
     }
 
 
-    void TriangleApplication::createVertexBuffer() {
+    void VulkanRHI::createVertexBuffer() {
+        SHERPHY_EXCEPTION_IF_FALSE(m_vertices.size() != 0, "no vertices input\n");
         VkDeviceSize buffer_size = sizeof(m_vertices[0]) * m_vertices.size();
 
         VkBuffer staging_buffer;
@@ -236,7 +365,7 @@ namespace Sherphy{
         vkFreeMemory(m_device, staging_buffer_memory, nullptr);
     }
 
-    void TriangleApplication::createIndexBuffer() 
+    void VulkanRHI::createIndexBuffer() 
     {
         VkDeviceSize buffer_size = sizeof(m_indices[0]) * m_indices.size();
 
@@ -257,42 +386,18 @@ namespace Sherphy{
         vkFreeMemory(m_device, staging_buffer_memory, nullptr);
     }
 
-    void TriangleApplication::copyBufferImmediate(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size)
+    void VulkanRHI::copyBufferImmediate(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size)
     {
-        VkCommandBufferAllocateInfo alloc_info{};
-        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        alloc_info.commandPool = m_command_pool;
-        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandBufferCount = 1;
-
-        VkCommandBuffer command_buffer;
-        vkAllocateCommandBuffers(m_device, &alloc_info, &command_buffer);
-
-        VkCommandBufferBeginInfo begin_info{};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(command_buffer, &begin_info);
-
+        VkCommandBuffer command_buffer = beginSingleTimeCommands();
         VkBufferCopy copyRegion{};
         copyRegion.srcOffset = 0; // Optional
         copyRegion.dstOffset = 0; // Optional
         copyRegion.size = size;
         vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copyRegion);
-        vkEndCommandBuffer(command_buffer);
-
-        VkSubmitInfo submit_info{};
-        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &command_buffer;
-
-        vkQueueSubmit(m_graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-        vkQueueWaitIdle(m_graphics_queue);
-
-        vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
+        endSingleTimeCommands(command_buffer);
     }
 
-    uint32_t TriangleApplication::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties)
+    uint32_t VulkanRHI::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties)
     {
         VkPhysicalDeviceMemoryProperties mem_properties;
         vkGetPhysicalDeviceMemoryProperties(m_physical_device, &mem_properties);
@@ -306,7 +411,7 @@ namespace Sherphy{
         SHERPHY_EXCEPTION_IF_FALSE(false, "failed to find suitable memory type!");
     }
 
-    void TriangleApplication::createRenderPass(RenderPassType type) 
+    void VulkanRHI::createRenderPass(RenderPassType type) 
     {
         switch (type)
         {
@@ -324,17 +429,55 @@ namespace Sherphy{
         return;
     }
 
-    void TriangleApplication::createCommandBuffer() {
+    void VulkanRHI::createCommandBuffer() 
+    {
+        m_command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
         VkCommandBufferAllocateInfo alloc_info{};
         alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         alloc_info.commandPool = m_command_pool;
         alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandBufferCount = 1;
+        alloc_info.commandBufferCount = static_cast<uint32_t>(m_command_buffers.size());
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateCommandBuffers(m_device, &alloc_info, &m_command_buffer) == VK_SUCCESS, "failed to allocate command buffers!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateCommandBuffers(m_device, &alloc_info, m_command_buffers.data()) == VK_SUCCESS, "failed to allocate command buffers!");
     }
 
-    void TriangleApplication::recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index) {
+
+    VkCommandBuffer VulkanRHI::beginSingleTimeCommands() 
+    {
+        VkCommandBufferAllocateInfo alloc_info{};
+        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        alloc_info.commandPool = m_command_pool;
+        alloc_info.commandBufferCount = 1;
+
+        VkCommandBuffer command_buffer;
+        vkAllocateCommandBuffers(m_device, &alloc_info, &command_buffer);
+
+        VkCommandBufferBeginInfo begin_info{};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(command_buffer, &begin_info);
+
+        return command_buffer;
+    }
+
+    void VulkanRHI::endSingleTimeCommands(VkCommandBuffer command_buffer) 
+    {
+        vkEndCommandBuffer(command_buffer);
+
+        VkSubmitInfo submit_info{};
+        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit_info.commandBufferCount = 1;
+        submit_info.pCommandBuffers = &command_buffer;
+
+        vkQueueSubmit(m_graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+        vkQueueWaitIdle(m_graphics_queue);
+
+        vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
+    }
+
+    void VulkanRHI::recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index) {
         VkCommandBufferBeginInfo begin_info{};
         begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -346,10 +489,16 @@ namespace Sherphy{
         render_pass_info.framebuffer = m_swap_chain_frame_buffers[image_index];
         render_pass_info.renderArea.offset = { 0, 0 };
         render_pass_info.renderArea.extent = m_extent;
-        VkClearValue clear_color = { {{1.0f, 1.0f, 1.0f, 1.0f}} };
-        render_pass_info.clearValueCount = 1;
-        render_pass_info.pClearValues = &clear_color;
-        vkCmdBeginRenderPass(m_command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+
+        std::array<VkClearValue, 2> clear_values{};
+        clear_values[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
+        clear_values[1].depthStencil = { 1.0f, 0 };
+
+        //VkClearValue clear_color = { {{1.0f, 1.0f, 1.0f, 1.0f}} };
+        render_pass_info.clearValueCount = static_cast<uint32_t>(clear_values.size());
+        render_pass_info.pClearValues = clear_values.data();
+        vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
         VkViewport viewport{};
@@ -366,18 +515,21 @@ namespace Sherphy{
         scissor.extent = m_extent;
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        VkBuffer vertex_buffers[] = { m_vertex_buffer };
         VkDeviceSize offsets[] = { 0 };
-        vkCmdBindVertexBuffers(m_command_buffer, 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(m_command_buffer, m_index_buffer, 0, VK_INDEX_TYPE_UINT16);
+        //vkCmdBindVertexBuffers(command_buffer, 0, static_cast<uint32_t>(m_vertex_buffers.size()), m_vertex_buffers.data(), offsets);
+        vkCmdBindVertexBuffers(command_buffer, 0, 1, &m_vertex_buffer, offsets);
+        vkCmdBindIndexBuffer(command_buffer, m_index_buffer, 0, VK_INDEX_TYPE_UINT32);
 
-        vkCmdDrawIndexed(m_command_buffer, static_cast<uint32_t>(m_indices.size()), 1, 0, 0, 0);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+            m_pipeline_layout, 0, 1, &m_descriptor_sets[m_current_frame], 0, nullptr);
+
+        vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(m_indices.size()), 1, 0, 0, 0);
         //vkCmdDraw(command_buffer, static_cast<uint32_t>(m_vertices.size()), 1, 0, 0);//TODO abstract command
         vkCmdEndRenderPass(command_buffer);
         SHERPHY_EXCEPTION_IF_FALSE(vkEndCommandBuffer(command_buffer) == VK_SUCCESS, "failed to record command buffer!");
     }
 
-    void TriangleApplication::createCommandPool() 
+    void VulkanRHI::createCommandPool() 
     {
         QueueFamilyIndices queue_family_indices = findQueueFamilies(m_physical_device);
 
@@ -390,20 +542,247 @@ namespace Sherphy{
 
     }
 
-    void TriangleApplication::createFrameBuffers() 
+    void VulkanRHI::createDepthResources()
+    {
+        VkFormat depth_format = findDepthFormat();
+
+        createImage(m_extent.width, m_extent.height, depth_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_depth_image, m_depth_image_memory);
+        m_depth_image_view = createImageView(m_depth_image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+    }
+
+    VkFormat VulkanRHI::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+        for (VkFormat format : candidates) {
+            VkFormatProperties props;
+            vkGetPhysicalDeviceFormatProperties(m_physical_device, format, &props);
+
+            if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+                return format;
+            }
+            else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+                return format;
+            }
+        }
+
+        SHERPHY_EXCEPTION_IF_FALSE(false, "failed to find supported format!");
+    }
+
+    VkFormat VulkanRHI::findDepthFormat() {
+        return findSupportedFormat(
+            { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+        );
+    }
+
+    void VulkanRHI::createTextureImage() 
+    {
+        int tex_width, tex_height, tex_channels;
+        unsigned char* pixels = g_miracle_global_context.m_file_system->readImageFile("I:\\SherphyEngine\\resource\\texture\\viking_room.png", tex_width, tex_height, tex_channels);
+        VkDeviceSize image_size = tex_width * tex_height * 4;
+
+        SHERPHY_EXCEPTION_IF_FALSE(pixels, "failed to load texture image!");
+
+        VkBuffer staging_buffer;
+        VkDeviceMemory staging_buffer_memory;
+        createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+
+        void* data;
+        vkMapMemory(m_device, staging_buffer_memory, 0, image_size, 0, &data);
+            memcpy(data, pixels, static_cast<size_t>(image_size));
+        vkUnmapMemory(m_device, staging_buffer_memory);
+
+        g_miracle_global_context.m_file_system->releaseImageAsset(pixels);
+
+        createImage(tex_width, tex_height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_texture_image, m_texture_image_memory);
+
+        transitionImageLayout(m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            copyBufferToImage(staging_buffer, m_texture_image, static_cast<uint32_t>(tex_width), static_cast<uint32_t>(tex_height));
+        transitionImageLayout(m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        vkDestroyBuffer(m_device, staging_buffer, nullptr);
+        vkFreeMemory(m_device, staging_buffer_memory, nullptr);
+    }
+
+
+    VkImageView VulkanRHI::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags)
+    {
+        VkImageViewCreateInfo view_info{};
+        view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view_info.image = image;
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = format;
+        view_info.subresourceRange.aspectMask = aspect_flags;
+        view_info.subresourceRange.baseMipLevel = 0;
+        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.baseArrayLayer = 0;
+        view_info.subresourceRange.layerCount = 1;
+
+        VkImageView image_view;
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateImageView(m_device, &view_info, nullptr, &image_view) == VK_SUCCESS, "failed to create texture image view!");
+
+        return image_view;
+    }
+
+    void VulkanRHI::createTextureImageView()
+    {
+        m_texture_image_view = createImageView(m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+
+    void VulkanRHI::createTextureSampler()
+    {
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(m_physical_device, &properties);
+
+        VkSamplerCreateInfo sampler_info{};
+        sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler_info.magFilter = VK_FILTER_LINEAR;
+        sampler_info.minFilter = VK_FILTER_LINEAR;
+        sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        sampler_info.anisotropyEnable = VK_TRUE;
+        sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+        sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+        sampler_info.unnormalizedCoordinates = VK_FALSE;
+        sampler_info.compareEnable = VK_FALSE;
+        sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
+        sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateSampler(m_device, &sampler_info, nullptr, &m_sampler) == VK_SUCCESS, "failed to create texture sampler!");
+    }
+
+    void VulkanRHI::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
+        VkCommandBuffer command_buffer = beginSingleTimeCommands();
+
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = { 0, 0, 0 };
+        region.imageExtent = {
+            width,
+            height,
+            1
+        };
+
+        vkCmdCopyBufferToImage(command_buffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+        endSingleTimeCommands(command_buffer);
+    }
+
+    void VulkanRHI::createImage(uint32_t width, 
+                                uint32_t height, 
+                                VkFormat format, 
+                                VkImageTiling tiling, 
+                                VkImageUsageFlags usage, 
+                                VkMemoryPropertyFlags properties, 
+                                VkImage& image, 
+                                VkDeviceMemory& image_memory) 
+    {
+        VkImageCreateInfo image_info{};
+        image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image_info.imageType = VK_IMAGE_TYPE_2D;
+        image_info.extent.width = width;
+        image_info.extent.height = height;
+        image_info.extent.depth = 1;
+        image_info.mipLevels = 1;
+        image_info.arrayLayers = 1;
+        image_info.format = format;
+        image_info.tiling = tiling;
+        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        image_info.usage = usage;
+        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateImage(m_device, &image_info, nullptr, &image) == VK_SUCCESS, "failed to create image!");
+
+        VkMemoryRequirements mem_requirements;
+        vkGetImageMemoryRequirements(m_device, image, &mem_requirements);
+
+        VkMemoryAllocateInfo alloc_info{};
+        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
+
+        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateMemory(m_device, &alloc_info, nullptr, &image_memory) == VK_SUCCESS, "failed to allocate image memory!")
+
+        vkBindImageMemory(m_device, image, image_memory, 0);
+    }
+
+
+    void VulkanRHI::transitionImageLayout(VkImage image, 
+                                          VkFormat format, 
+                                          VkImageLayout old_layout, 
+                                          VkImageLayout new_layout)
+    {
+        VkCommandBuffer command_buffer = beginSingleTimeCommands();
+
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = old_layout;
+        barrier.newLayout = new_layout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+
+        VkPipelineStageFlags source_stage;
+        VkPipelineStageFlags destination_stage;
+
+        if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            barrier.srcAccessMask = 0;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+            source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+        else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else {
+            throw std::invalid_argument("unsupported layout transition!");
+        }
+
+        vkCmdPipelineBarrier(
+            command_buffer,
+            source_stage, destination_stage,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+        );
+
+        endSingleTimeCommands(command_buffer);
+    }
+
+    void VulkanRHI::createFrameBuffers() 
     {
         m_swap_chain_frame_buffers.resize(m_swap_chain_image_views.size());
 
         for (size_t i = 0; i < m_swap_chain_image_views.size(); i++) {
-            VkImageView attachments[] = {
-                m_swap_chain_image_views[i]
+            std::array<VkImageView, 2> attachments = {
+                m_swap_chain_image_views[i],
+                m_depth_image_view
             };
 
             VkFramebufferCreateInfo frame_buffer_info{};
             frame_buffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
             frame_buffer_info.renderPass = m_render_pass;
-            frame_buffer_info.attachmentCount = 1;
-            frame_buffer_info.pAttachments = attachments;
+            frame_buffer_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+            frame_buffer_info.pAttachments = attachments.data();
             frame_buffer_info.width = m_extent.width;
             frame_buffer_info.height = m_extent.height;
             frame_buffer_info.layers = 1;
@@ -411,11 +790,16 @@ namespace Sherphy{
         }
     }
 
-    void TriangleApplication::createSurface() {
+    bool VulkanRHI::shouldClose()
+    {
+        return !glfwWindowShouldClose(m_window);
+    }
+
+    void VulkanRHI::createSurface() {
         SHERPHY_EXCEPTION_IF_FALSE(glfwCreateWindowSurface(m_instance, m_window, nullptr, &m_surface) == VK_SUCCESS, "failed to create window surface!");
     }
 
-    void TriangleApplication::pickPhysicalDevice()
+    void VulkanRHI::pickPhysicalDevice()
     {
         uint32_t device_count = 0;
         vkEnumeratePhysicalDevices(m_instance, &device_count, nullptr);
@@ -438,7 +822,7 @@ namespace Sherphy{
         }
     }
 
-    void TriangleApplication::createLogicalDevice()
+    void VulkanRHI::createLogicalDevice()
     {
         QueueFamilyIndices indices = findQueueFamilies(m_physical_device);
 
@@ -454,6 +838,8 @@ namespace Sherphy{
             queue_create_info.pQueuePriorities = &m_queue_prioity;
             queue_create_infos.push_back(queue_create_info);
         }
+
+        m_device_features.samplerAnisotropy = VK_TRUE;
 
         VkDeviceCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -476,7 +862,7 @@ namespace Sherphy{
         vkGetDeviceQueue(m_device, indices.present_family.value(), 0, &m_present_queue);
     }
 
-    void TriangleApplication::createSwapChain() 
+    void VulkanRHI::createSwapChain() 
     {
         SwapChainSupportDetails swap_chain_support = querySwapChainSupport(m_physical_device);
 
@@ -531,32 +917,17 @@ namespace Sherphy{
         return;
     }
 
-    void TriangleApplication::createImageViews() 
+    void VulkanRHI::createImageViews() 
     {
         SHERPHY_EXCEPTION_IF_FALSE((m_swap_chain_images.size()>0), "swap chain image is empty");
         m_swap_chain_image_views.resize(m_swap_chain_images.size());
 
         for (size_t i = 0; i < m_swap_chain_images.size(); i++) {
-            VkImageViewCreateInfo create_info{};
-            create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            create_info.image = m_swap_chain_images[i];
-            create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            create_info.format = m_swap_chain_image_format;
-            create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-            create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            create_info.subresourceRange.baseMipLevel = 0;
-            create_info.subresourceRange.levelCount = 1;
-            create_info.subresourceRange.baseArrayLayer = 0;
-            create_info.subresourceRange.layerCount = 1;
-
-            SHERPHY_EXCEPTION_IF_FALSE(vkCreateImageView(m_device, &create_info, nullptr, &m_swap_chain_image_views[i]) == VK_SUCCESS, "failed to create image views!");
+            m_swap_chain_image_views[i] = createImageView(m_swap_chain_images[i], m_swap_chain_image_format, VK_IMAGE_ASPECT_COLOR_BIT);
         }
     }
 
-    VkShaderModule TriangleApplication::createShaderModule(const std::vector<char>& code) 
+    VkShaderModule VulkanRHI::createShaderModule(const std::vector<char>& code) 
     {
         VkShaderModuleCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -569,12 +940,12 @@ namespace Sherphy{
         return shader_module;
     }
 
-    void TriangleApplication::createRenderPassNormal() 
+    void VulkanRHI::createRenderPassNormal() 
     {
         VkAttachmentDescription color_attachment{};
         color_attachment.format = m_swap_chain_image_format;
         color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+        color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
         //LOWTODO stencil test
@@ -588,23 +959,39 @@ namespace Sherphy{
         color_attachment_ref.attachment = 0;
         color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+        VkAttachmentReference depth_attachment_ref{};
+        depth_attachment_ref.attachment = 1;
+        depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
         VkSubpassDescription subpass{};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &color_attachment_ref;
+        subpass.pDepthStencilAttachment = &depth_attachment_ref;
+
+        VkAttachmentDescription depth_attachment{};
+        depth_attachment.format = findDepthFormat();
+        depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         VkSubpassDependency dependency{};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
         dependency.dstSubpass = 0;
-        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
         dependency.srcAccessMask = 0;
-        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
+        std::array<VkAttachmentDescription, 2> attachments = { color_attachment, depth_attachment };
         VkRenderPassCreateInfo render_pass_info{};
         render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        render_pass_info.attachmentCount = 1;
-        render_pass_info.pAttachments = &color_attachment;
+        render_pass_info.attachmentCount = attachments.size();
+        render_pass_info.pAttachments = attachments.data();
         render_pass_info.subpassCount = 1;
         render_pass_info.dependencyCount = 1;
         render_pass_info.pDependencies = &dependency;
@@ -614,7 +1001,7 @@ namespace Sherphy{
         return;
     }
     
-    void TriangleApplication::createGraphicsPipeline(PipeLineType type, std::vector<char>& vertex_shader, std::vector<char>& fragment_shader) 
+    void VulkanRHI::createGraphicsPipeline(PipeLineType type, std::vector<char>& vertex_shader, std::vector<char>& fragment_shader) 
     {
         switch (type)
         {
@@ -636,9 +1023,9 @@ namespace Sherphy{
     }
 
     //TODO Uniform Type
-    void TriangleApplication::createGraphicsPipelineUniform(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
+    void VulkanRHI::createGraphicsPipelineUniform(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
     {
-        auto uniform_shader = SPVReader::readFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_uniform.spv");
+        auto uniform_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_uniform.spv");
 
         VkShaderModule uniform_shader_module = createShaderModule(uniform_shader);
 
@@ -699,7 +1086,7 @@ namespace Sherphy{
         rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer.lineWidth = 1.0f;
         rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer.depthBiasEnable = VK_FALSE;
         rasterizer.depthBiasConstantFactor = 0.0f; // Optional
         rasterizer.depthBiasClamp = 0.0f; // Optional
@@ -726,16 +1113,16 @@ namespace Sherphy{
         color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
 
-        VkPipelineColorBlendStateCreateInfo colorBlending{};
-        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlending.logicOpEnable = VK_FALSE;
-        colorBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
-        colorBlending.attachmentCount = 1;
-        colorBlending.pAttachments = &color_blend_attachment;
-        colorBlending.blendConstants[0] = 0.0f; // Optional
-        colorBlending.blendConstants[1] = 0.0f; // Optional
-        colorBlending.blendConstants[2] = 0.0f; // Optional
-        colorBlending.blendConstants[3] = 0.0f; // Optional
+        VkPipelineColorBlendStateCreateInfo color_blending{};
+        color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        color_blending.logicOpEnable = VK_FALSE;
+        color_blending.logicOp = VK_LOGIC_OP_COPY; // Optional
+        color_blending.attachmentCount = 1;
+        color_blending.pAttachments = &color_blend_attachment;
+        color_blending.blendConstants[0] = 0.0f; // Optional
+        color_blending.blendConstants[1] = 0.0f; // Optional
+        color_blending.blendConstants[2] = 0.0f; // Optional
+        color_blending.blendConstants[3] = 0.0f; // Optional
 
         VkPipelineLayoutCreateInfo pipeline_layout_info{};
         pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -756,7 +1143,7 @@ namespace Sherphy{
         pipeline_info.pRasterizationState = &rasterizer;
         pipeline_info.pMultisampleState = &multisampling;
         pipeline_info.pDepthStencilState = nullptr; // Optional
-        pipeline_info.pColorBlendState = &colorBlending;
+        pipeline_info.pColorBlendState = &color_blending;
         pipeline_info.pDynamicState = &dynamic_state;
         pipeline_info.layout = m_pipeline_layout;
         pipeline_info.renderPass = m_render_pass;
@@ -770,7 +1157,7 @@ namespace Sherphy{
         return;
     }
 
-    void TriangleApplication::createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
+    void VulkanRHI::createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
     {
         VkShaderModule vert_shader_module = createShaderModule(vertex_shader);
         VkShaderModule frag_shader_module = createShaderModule(fragment_shader);
@@ -859,16 +1246,16 @@ namespace Sherphy{
         color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
 
-        VkPipelineColorBlendStateCreateInfo colorBlending{};
-        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlending.logicOpEnable = VK_FALSE;
-        colorBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
-        colorBlending.attachmentCount = 1;
-        colorBlending.pAttachments = &color_blend_attachment;
-        colorBlending.blendConstants[0] = 0.0f; // Optional
-        colorBlending.blendConstants[1] = 0.0f; // Optional
-        colorBlending.blendConstants[2] = 0.0f; // Optional
-        colorBlending.blendConstants[3] = 0.0f; // Optional
+        VkPipelineColorBlendStateCreateInfo color_blending{};
+        color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        color_blending.logicOpEnable = VK_FALSE;
+        color_blending.logicOp = VK_LOGIC_OP_COPY; // Optional
+        color_blending.attachmentCount = 1;
+        color_blending.pAttachments = &color_blend_attachment;
+        color_blending.blendConstants[0] = 0.0f; // Optional
+        color_blending.blendConstants[1] = 0.0f; // Optional
+        color_blending.blendConstants[2] = 0.0f; // Optional
+        color_blending.blendConstants[3] = 0.0f; // Optional
 
         VkPipelineLayoutCreateInfo pipeline_layout_info{};
         pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -889,7 +1276,7 @@ namespace Sherphy{
         pipeline_info.pRasterizationState = &rasterizer;
         pipeline_info.pMultisampleState = &multisampling;
         pipeline_info.pDepthStencilState = nullptr; // Optional
-        pipeline_info.pColorBlendState = &colorBlending;
+        pipeline_info.pColorBlendState = &color_blending;
         pipeline_info.pDynamicState = &dynamic_state;
         pipeline_info.layout = m_pipeline_layout;
         pipeline_info.renderPass = m_render_pass;
@@ -904,11 +1291,8 @@ namespace Sherphy{
         return;
     }
 
-    void TriangleApplication::createGraphicsPipelineNormal(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
+    void VulkanRHI::createGraphicsPipelineNormal(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
     {
-        auto bindingDescription = VkVertex::getBindingDescription();
-        auto attributeDescriptions = VkVertex::getAttributeDescriptions();
-
         VkShaderModule vert_shader_module = createShaderModule(vertex_shader);
         VkShaderModule frag_shader_module = createShaderModule(fragment_shader);
 
@@ -931,6 +1315,9 @@ namespace Sherphy{
         dynamic_state.dynamicStateCount = static_cast<uint32_t>(m_dynamic_states.size());
         dynamic_state.pDynamicStates = m_dynamic_states.data();
 
+        auto bindingDescription = VkVertex::getBindingDescription();
+        auto attributeDescriptions = VkVertex::getAttributeDescriptions();
+
         VkPipelineVertexInputStateCreateInfo vertex_input_info{};
         vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         vertex_input_info.vertexBindingDescriptionCount = 1;
@@ -943,24 +1330,24 @@ namespace Sherphy{
         input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         input_assembly.primitiveRestartEnable = VK_FALSE;
 
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float)m_extent.width;
-        viewport.height = (float)m_extent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
+        //VkViewport viewport{};
+        //viewport.x = 0.0f;
+        //viewport.y = 0.0f;
+        //viewport.width = (float)m_extent.width;
+        //viewport.height = (float)m_extent.height;
+        //viewport.minDepth = 0.0f;
+        //viewport.maxDepth = 1.0f;
 
-        VkRect2D scissor{};
-        scissor.offset = { 0, 0 };
-        scissor.extent = m_extent;
+        //VkRect2D scissor{};
+        //scissor.offset = { 0, 0 };
+        //scissor.extent = m_extent;
 
         VkPipelineViewportStateCreateInfo viewport_state{};
         viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
         viewport_state.viewportCount = 1;
-        viewport_state.pViewports = &viewport;
+        //viewport_state.pViewports = &viewport;
         viewport_state.scissorCount = 1;
-        viewport_state.pScissors = &scissor;
+        //viewport_state.pScissors = &scissor;
 
         VkPipelineRasterizationStateCreateInfo rasterizer{};
         rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -969,7 +1356,7 @@ namespace Sherphy{
         rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer.lineWidth = 1.0f;
         rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer.depthBiasEnable = VK_FALSE;
         rasterizer.depthBiasConstantFactor = 0.0f; // Optional
         rasterizer.depthBiasClamp = 0.0f; // Optional
@@ -985,6 +1372,13 @@ namespace Sherphy{
         multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
         multisampling.alphaToOneEnable = VK_FALSE; // Optional
 
+        VkPipelineDepthStencilStateCreateInfo depth_stencil{};
+        depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depth_stencil.depthTestEnable = VK_TRUE;
+        depth_stencil.depthWriteEnable = VK_TRUE;
+        depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depth_stencil.depthBoundsTestEnable = VK_FALSE;
+        depth_stencil.stencilTestEnable = VK_FALSE;
 
         VkPipelineColorBlendAttachmentState color_blend_attachment{};
         color_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -996,21 +1390,21 @@ namespace Sherphy{
         color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
         color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
 
-        VkPipelineColorBlendStateCreateInfo colorBlending{};
-        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlending.logicOpEnable = VK_FALSE;
-        colorBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
-        colorBlending.attachmentCount = 1;
-        colorBlending.pAttachments = &color_blend_attachment;
-        colorBlending.blendConstants[0] = 0.0f; // Optional
-        colorBlending.blendConstants[1] = 0.0f; // Optional
-        colorBlending.blendConstants[2] = 0.0f; // Optional
-        colorBlending.blendConstants[3] = 0.0f; // Optional
+        VkPipelineColorBlendStateCreateInfo color_blending{};
+        color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        color_blending.logicOpEnable = VK_FALSE;
+        color_blending.logicOp = VK_LOGIC_OP_COPY; // Optional
+        color_blending.attachmentCount = 1;
+        color_blending.pAttachments = &color_blend_attachment;
+        color_blending.blendConstants[0] = 0.0f; // Optional
+        color_blending.blendConstants[1] = 0.0f; // Optional
+        color_blending.blendConstants[2] = 0.0f; // Optional
+        color_blending.blendConstants[3] = 0.0f; // Optional
 
         VkPipelineLayoutCreateInfo pipeline_layout_info{};
         pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        pipeline_layout_info.setLayoutCount = 0; // Optional
-        pipeline_layout_info.pSetLayouts = nullptr; // Optional
+        pipeline_layout_info.setLayoutCount = 1;
+        pipeline_layout_info.pSetLayouts = &m_descriptor_set_layout;
         pipeline_layout_info.pushConstantRangeCount = 0; // Optional
         pipeline_layout_info.pPushConstantRanges = nullptr; // Optional
 
@@ -1025,8 +1419,8 @@ namespace Sherphy{
         pipeline_info.pViewportState = &viewport_state;
         pipeline_info.pRasterizationState = &rasterizer;
         pipeline_info.pMultisampleState = &multisampling;
-        pipeline_info.pDepthStencilState = nullptr; // Optional
-        pipeline_info.pColorBlendState = &colorBlending;
+        pipeline_info.pDepthStencilState = &depth_stencil;
+        pipeline_info.pColorBlendState = &color_blending;
         pipeline_info.pDynamicState = &dynamic_state;
         pipeline_info.layout = m_pipeline_layout;
         pipeline_info.renderPass = m_render_pass;
@@ -1042,7 +1436,7 @@ namespace Sherphy{
     }
 
     // TODO test if device suitable
-    bool TriangleApplication::isDeviceSuitable(VkPhysicalDevice& device) 
+    bool VulkanRHI::isDeviceSuitable(VkPhysicalDevice& device) 
     {
         QueueFamilyIndices indices = findQueueFamilies(device);
 
@@ -1063,10 +1457,13 @@ namespace Sherphy{
             nv_device = true;
         }
 
-        return indices.isComplete() && extension_supported && swap_chain_adequate && nv_device;
+        VkPhysicalDeviceFeatures supported_features;
+        vkGetPhysicalDeviceFeatures(device, &supported_features);
+
+        return indices.isComplete() && extension_supported && swap_chain_adequate && nv_device && supported_features.samplerAnisotropy;
     }
 
-    VkSurfaceFormatKHR TriangleApplication::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& available_formats) {
+    VkSurfaceFormatKHR VulkanRHI::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& available_formats) {
         for (VkSurfaceFormatKHR available_format : available_formats) {
             if (available_format.format == VK_FORMAT_B8G8R8A8_SRGB && available_format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
                 return available_format;
@@ -1075,7 +1472,7 @@ namespace Sherphy{
         return available_formats[0];
     }
 
-    VkPresentModeKHR TriangleApplication::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+    VkPresentModeKHR VulkanRHI::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
         for (const auto& availablePresentMode : availablePresentModes) {
             if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
                 return availablePresentMode;
@@ -1084,7 +1481,7 @@ namespace Sherphy{
         return VK_PRESENT_MODE_FIFO_KHR;
     }
 
-    VkExtent2D TriangleApplication::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
+    VkExtent2D VulkanRHI::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
         if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
             return capabilities.currentExtent;
         }
@@ -1104,7 +1501,7 @@ namespace Sherphy{
         }
     }
 
-    SwapChainSupportDetails TriangleApplication::querySwapChainSupport(VkPhysicalDevice& device) 
+    SwapChainSupportDetails VulkanRHI::querySwapChainSupport(VkPhysicalDevice& device) 
     {
         SwapChainSupportDetails details;
 
@@ -1128,7 +1525,7 @@ namespace Sherphy{
         return details;
     }
 
-    bool TriangleApplication::checkDeviceExtensionSupport(VkPhysicalDevice& device) 
+    bool VulkanRHI::checkDeviceExtensionSupport(VkPhysicalDevice& device) 
     {
         uint32_t extension_count;
         vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
@@ -1146,7 +1543,7 @@ namespace Sherphy{
         return required_extensions.empty();
     }
 
-    QueueFamilyIndices TriangleApplication::findQueueFamilies(VkPhysicalDevice& device) 
+    QueueFamilyIndices VulkanRHI::findQueueFamilies(VkPhysicalDevice& device) 
     {
         QueueFamilyIndices indices;
         uint32_t queue_family_count = 0;
@@ -1177,19 +1574,12 @@ namespace Sherphy{
         return indices;
     }
 
-    void TriangleApplication::mainLoop()
+    void VulkanRHI::createSyncObjects() 
     {
-        while (!glfwWindowShouldClose(m_window))
-        {
-            glfwPollEvents();
-            drawFrame();
-        }
+        m_image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        m_render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        m_in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 
-        vkDeviceWaitIdle(m_device);
-    }
-
-    void TriangleApplication::createSyncObjects() 
-    {
         VkSemaphoreCreateInfo semaphore_info{};
         semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -1197,40 +1587,71 @@ namespace Sherphy{
         fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphore) == VK_SUCCESS, "failed to create image semaphore for a frame!");
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphore) == VK_SUCCESS, "failed to create render finish semaphore for a frame!");
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fence) == VK_SUCCESS, "failed to create fence for a frame!");
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphores[i]) == VK_SUCCESS, "failed to create image semaphore for a frame!");
+            SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]) == VK_SUCCESS, "failed to create render finish semaphore for a frame!");
+            SHERPHY_EXCEPTION_IF_FALSE(vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fences[i]) == VK_SUCCESS, "failed to create fence for a frame!");
+        }
+
         return;
     }
 
-    void TriangleApplication::drawFrame() 
+    void VulkanRHI::recreateSwapChain() {
+        int width = 0, height = 0;
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(m_window, &width, &height);
+            glfwWaitEvents();
+        }
+
+        vkDeviceWaitIdle(m_device);
+
+        cleanupSwapChain();
+
+        createSwapChain();
+        createImageViews();
+        createDepthResources();
+        createFrameBuffers();
+    }
+
+    void VulkanRHI::drawFrame() 
     {
-        vkWaitForFences(m_device, 1, &m_in_flight_fence, VK_TRUE, UINT64_MAX);
-        vkResetFences(m_device, 1, &m_in_flight_fence);
+        vkWaitForFences(m_device, 1, &m_in_flight_fences[m_current_frame], VK_TRUE, UINT64_MAX);
 
         uint32_t image_index;
-        vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphore, VK_NULL_HANDLE, &image_index);
+        VkResult result = vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame], VK_NULL_HANDLE, &image_index);
 
-        vkResetCommandBuffer(m_command_buffer, /*VkCommandBufferResetFlagBits*/ 0);
-        recordCommandBuffer(m_command_buffer, image_index);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            recreateSwapChain();
+            return;
+        }
+        else {
+            SHERPHY_EXCEPTION_IF_FALSE(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "failed to acquire swap chain image!");
+        }
+
+        updateUniformBuffer(m_current_frame);
+
+        vkResetFences(m_device, 1, &m_in_flight_fences[m_current_frame]);
+
+        vkResetCommandBuffer(m_command_buffers[m_current_frame], /*VkCommandBufferResetFlagBits*/ 0);
+        recordCommandBuffer(m_command_buffers[m_current_frame], image_index);
 
         VkSubmitInfo submit_info{};
         submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        VkSemaphore wait_semaphores[] = { m_image_available_semaphore };
+        VkSemaphore wait_semaphores[] = { m_image_available_semaphores[m_current_frame] };
         VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         submit_info.waitSemaphoreCount = 1;
         submit_info.pWaitSemaphores = wait_semaphores;
         submit_info.pWaitDstStageMask = wait_stages;
 
         submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &m_command_buffer;
+        submit_info.pCommandBuffers = &m_command_buffers[m_current_frame];
 
-        VkSemaphore signal_semaphores[] = { m_render_finished_semaphore };
+        VkSemaphore signal_semaphores[] = { m_render_finished_semaphores[m_current_frame] };
         submit_info.signalSemaphoreCount = 1;
         submit_info.pSignalSemaphores = signal_semaphores;
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fence) == VK_SUCCESS, "failed to submit draw command buffer!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fences[m_current_frame]) == VK_SUCCESS, "failed to submit draw command buffer!");
 
         VkPresentInfoKHR present_info{};
         present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -1244,45 +1665,86 @@ namespace Sherphy{
 
         present_info.pImageIndices = &image_index;
 
-        vkQueuePresentKHR(m_present_queue, &present_info);
+        result = vkQueuePresentKHR(m_present_queue, &present_info);
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_frame_buffer_resized) 
+        {
+            m_frame_buffer_resized = false;
+            recreateSwapChain();
+        }
+        else
+        {
+            SHERPHY_EXCEPTION_IF_FALSE(result == VK_SUCCESS, "failed to present swap chain image!");
+        }
+
+        m_current_frame = (m_current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    void TriangleApplication::cleanUp()
-    {
-        vkDestroyCommandPool(m_device, m_command_pool, nullptr);
-        for (auto frame_buffer : m_swap_chain_frame_buffers) {
-            vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
-        }
-        vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
-        vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
-        vkDestroyRenderPass(m_device, m_render_pass, nullptr);
-        for(auto image_view : m_swap_chain_image_views) {
+    void VulkanRHI::cleanupSwapChain() {
+        for (auto image_view : m_swap_chain_image_views) {
             vkDestroyImageView(m_device, image_view, nullptr);
         }
 
+        vkDestroyImageView(m_device, m_depth_image_view, nullptr);
+        vkDestroyImage(m_device, m_depth_image, nullptr);
+        vkFreeMemory(m_device, m_depth_image_memory, nullptr);
+
+        for (auto frame_buffer : m_swap_chain_frame_buffers) {
+            vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
+        }
         vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
+        return;
+    }
+
+    void VulkanRHI::cleanUp()
+    {
+        vkDeviceWaitIdle(m_device);
+        cleanupSwapChain();
+
+        vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
+        vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
+        vkDestroyRenderPass(m_device, m_render_pass, nullptr);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            vkDestroyBuffer(m_device, m_uniform_buffers[i], nullptr);
+            vkFreeMemory(m_device, m_uniform_buffers_memory[i], nullptr);
+        }
+        vkDestroyDescriptorPool(m_device, m_descriptor_pool, nullptr);
+
+        vkDestroySampler(m_device, m_sampler, nullptr);
+        vkDestroyImage(m_device, m_texture_image, nullptr);
+        vkFreeMemory(m_device, m_texture_image_memory, nullptr);
+
+        vkDestroyDescriptorSetLayout(m_device, m_descriptor_set_layout, nullptr);
+        
         vkDestroyBuffer(m_device, m_vertex_buffer, nullptr);
         vkFreeMemory(m_device, m_vertex_buffer_memory, nullptr);
         vkDestroyBuffer(m_device, m_index_buffer, nullptr);
         vkFreeMemory(m_device, m_index_buffer_memory, nullptr);
 
-        vkDestroyDevice(m_device, nullptr);
-        vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            vkDestroySemaphore(m_device, m_render_finished_semaphores[i], nullptr);
+            vkDestroySemaphore(m_device, m_image_available_semaphores[i], nullptr);
+            vkDestroyFence(m_device, m_in_flight_fences[i], nullptr);
+        }
+        vkDestroyCommandPool(m_device, m_command_pool, nullptr);
 
+        vkDestroyDevice(m_device, nullptr);
         if (m_enable_validation_layer) {
             DestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
         }
 
+        vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
         vkDestroyInstance(m_instance, nullptr);
+
         glfwDestroyWindow(m_window);
         glfwTerminate();
     }
 
-    void TriangleApplication::run()
+    void VulkanRHI::run()
     {
         initWindow();
         initVulkan();
-        mainLoop();
         cleanUp();
     }
 }
