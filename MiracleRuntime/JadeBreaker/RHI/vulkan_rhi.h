@@ -9,9 +9,6 @@
 #include <iostream>
 #include <optional>
 
-//#define GLFW_INCLUDE_VULKAN
-//#include <GLFW/glfw3.h>
-
 namespace Sherphy{
     struct QueueFamilyIndices {
         std::optional<uint32_t> graphics_family;
@@ -43,6 +40,116 @@ namespace Sherphy{
 
     class VulkanRHI
     {
+    public:
+        void run();
+        void initWindow();
+        void initVulkan();
+        std::vector<VkVertex>& getVerticesWrite();
+        std::vector<uint32_t>& getIndicesWrite();
+        void drawFrame();
+        bool shouldClose();
+        void cleanUp();
+    private:
+        //------------------ System Initialization ----------------------------
+        void createSurface();
+        void pickPhysicalDevice();
+        void createLogicalDevice();
+
+        void createSwapChain();
+        void recreateSwapChain();
+        void cleanupSwapChain();
+
+        void createImageViews();
+        void createRenderPass(RenderPassType type);
+        void createDescriptorSetLayout();
+        void createDescriptorPool();
+        void createDescriptorSets();
+        void createGraphicsPipeline(PipeLineType type, 
+                                    std::vector<char>& vertex_shader, 
+                                    std::vector<char>& fragment_shader);
+
+        void createTextureImage();
+        VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags);
+        void createTextureImageView();
+        void createTextureSampler();
+        void createImage(uint32_t width, 
+                         uint32_t height, 
+                         VkFormat format, 
+                         VkImageTiling tiling, 
+                         VkImageUsageFlags usage, 
+                         VkMemoryPropertyFlags properties, 
+                         VkImage& image, 
+                         VkDeviceMemory& image_memory);
+        void copyBufferToImage(VkBuffer buffer, 
+                               VkImage image, 
+                               uint32_t width, 
+                               uint32_t height);
+        void transitionImageLayout(VkImage image, 
+                                   VkFormat format, 
+                                   VkImageLayout old_layout, 
+                                   VkImageLayout new_layout);
+        void createFrameBuffers();
+        void createBuffer(VkDeviceSize size, 
+                          VkBufferUsageFlags usage, 
+                          VkMemoryPropertyFlags properties, 
+                          VkBuffer& buffer, 
+                          VkDeviceMemory& bufferMemory);
+        void createVertexBuffer();
+        void createIndexBuffer();
+        void createDepthResources();
+        VkFormat findDepthFormat();
+        VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+
+        void createUniformBuffers();
+        void updateUniformBuffer(uint32_t current_image);
+
+        void copyBufferImmediate(VkBuffer src_buffer,
+                                VkBuffer dst_buffer,
+                                VkDeviceSize size);
+
+        void createCommandPool();
+        void createCommandBuffer();
+        void recordCommandBuffer(VkCommandBuffer command_buffer,
+                                 uint32_t image_index);
+
+        VkCommandBuffer beginSingleTimeCommands();
+        void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+
+        void createSyncObjects();
+
+        void createRenderPassNormal();
+        void createGraphicsPipelineNormal(std::vector<char>& vertex_shader,
+                                          std::vector<char>& fragment_shader);
+        void createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader, 
+                                                std::vector<char>& fragment_shader);
+        void createGraphicsPipelineUniform(std::vector<char>& vertex_shader, 
+                                           std::vector<char>& fragment_shader);
+        VkShaderModule createShaderModule(const std::vector<char>& code);
+
+
+        //------------------- Check Pick --------------------------------------
+        bool isDeviceSuitable(VkPhysicalDevice& device);
+        bool checkDeviceExtensionSupport(VkPhysicalDevice& device);
+        QueueFamilyIndices findQueueFamilies(VkPhysicalDevice& device);
+        uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties);
+        void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create_info);
+        VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, 
+                                              const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, 
+                                              const VkAllocationCallbacks* pAllocator, 
+                                              VkDebugUtilsMessengerEXT* pDebugMessenger);
+        void setupDebugMessenger();
+        void DestroyDebugUtilsMessengerEXT(VkInstance instance, 
+                                           VkDebugUtilsMessengerEXT debugMessenger, 
+                                           const VkAllocationCallbacks* pAllocator);
+
+        
+        void createInstance();
+        std::vector<const char*> getRequiredExtensions();
+        bool checkValidationLayerSupport();
+        SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice& device);
+        VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+        VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+        VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     private:
         //----------------- Vk Device Part ---------------------------
         VkInstance m_instance;
@@ -156,113 +263,5 @@ namespace Sherphy{
         //------------------ Debug -------------------------------------------
         VkDebugUtilsMessengerEXT m_debug_messenger;
 
-    public:
-        void run();
-        void initWindow();
-        void initVulkan();
-        void drawFrame();
-        bool shouldClose();
-        void cleanUp();
-    private:
-        //------------------ System Initialization ----------------------------
-        void createSurface();
-        void pickPhysicalDevice();
-        void createLogicalDevice();
-
-        void createSwapChain();
-        void recreateSwapChain();
-        void cleanupSwapChain();
-
-        void createImageViews();
-        void createRenderPass(RenderPassType type);
-        void createDescriptorSetLayout();
-        void createDescriptorPool();
-        void createDescriptorSets();
-        void createGraphicsPipeline(PipeLineType type, 
-                                    std::vector<char>& vertex_shader, 
-                                    std::vector<char>& fragment_shader);
-
-        void createTextureImage();
-        VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags);
-        void createTextureImageView();
-        void createTextureSampler();
-        void createImage(uint32_t width, 
-                         uint32_t height, 
-                         VkFormat format, 
-                         VkImageTiling tiling, 
-                         VkImageUsageFlags usage, 
-                         VkMemoryPropertyFlags properties, 
-                         VkImage& image, 
-                         VkDeviceMemory& image_memory);
-        void copyBufferToImage(VkBuffer buffer, 
-                               VkImage image, 
-                               uint32_t width, 
-                               uint32_t height);
-        void transitionImageLayout(VkImage image, 
-                                   VkFormat format, 
-                                   VkImageLayout old_layout, 
-                                   VkImageLayout new_layout);
-        void createFrameBuffers();
-        void createBuffer(VkDeviceSize size, 
-                          VkBufferUsageFlags usage, 
-                          VkMemoryPropertyFlags properties, 
-                          VkBuffer& buffer, 
-                          VkDeviceMemory& bufferMemory);
-        void createVertexBuffer();
-        void createIndexBuffer();
-        void createDepthResources();
-        VkFormat findDepthFormat();
-        VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
-
-        void createUniformBuffers();
-        void updateUniformBuffer(uint32_t current_image);
-
-        void copyBufferImmediate(VkBuffer src_buffer,
-                                VkBuffer dst_buffer,
-                                VkDeviceSize size);
-
-        void createCommandPool();
-        void createCommandBuffer();
-        void recordCommandBuffer(VkCommandBuffer command_buffer,
-                                 uint32_t image_index);
-
-        VkCommandBuffer beginSingleTimeCommands();
-        void endSingleTimeCommands(VkCommandBuffer commandBuffer);
-
-        void createSyncObjects();
-
-        void createRenderPassNormal();
-        void createGraphicsPipelineNormal(std::vector<char>& vertex_shader,
-                                          std::vector<char>& fragment_shader);
-        void createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader, 
-                                                std::vector<char>& fragment_shader);
-        void createGraphicsPipelineUniform(std::vector<char>& vertex_shader, 
-                                           std::vector<char>& fragment_shader);
-        VkShaderModule createShaderModule(const std::vector<char>& code);
-
-
-        //------------------- Check Pick --------------------------------------
-        bool isDeviceSuitable(VkPhysicalDevice& device);
-        bool checkDeviceExtensionSupport(VkPhysicalDevice& device);
-        QueueFamilyIndices findQueueFamilies(VkPhysicalDevice& device);
-        uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties);
-        void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create_info);
-        VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, 
-                                              const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, 
-                                              const VkAllocationCallbacks* pAllocator, 
-                                              VkDebugUtilsMessengerEXT* pDebugMessenger);
-        void setupDebugMessenger();
-        void DestroyDebugUtilsMessengerEXT(VkInstance instance, 
-                                           VkDebugUtilsMessengerEXT debugMessenger, 
-                                           const VkAllocationCallbacks* pAllocator);
-
-        
-        void createInstance();
-        std::vector<const char*> getRequiredExtensions();
-        bool checkValidationLayerSupport();
-        SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice& device);
-        VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
-        VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
-        VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     };
 }

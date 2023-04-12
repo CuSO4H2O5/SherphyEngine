@@ -13,7 +13,7 @@ namespace Sherphy
 		void shutdown();
 	private:
 		void swapData();
-		VulkanRHI* m_rendering_device;
+		bool m_is_new_world { true };
 		WorldDataBase* m_world_data;
 	};
 

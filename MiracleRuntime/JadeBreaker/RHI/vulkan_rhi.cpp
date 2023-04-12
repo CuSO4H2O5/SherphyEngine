@@ -190,6 +190,15 @@ namespace Sherphy{
         createSyncObjects();
     }
 
+    std::vector<VkVertex>& VulkanRHI::getVerticesWrite()
+    {
+        return m_vertices;
+    }
+    std::vector<uint32_t>& VulkanRHI::getIndicesWrite() 
+    {
+        return m_indices;
+    }
+
     void VulkanRHI::createDescriptorSets() 
     {
         std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, m_descriptor_set_layout);
@@ -340,7 +349,8 @@ namespace Sherphy{
     }
 
 
-    void VulkanRHI::createVertexBuffer() {
+    void VulkanRHI::createVertexBuffer() 
+    {
         SHERPHY_EXCEPTION_IF_FALSE(m_vertices.size() != 0, "no vertices input\n");
         VkDeviceSize buffer_size = sizeof(m_vertices[0]) * m_vertices.size();
 
