@@ -42,12 +42,10 @@ namespace Sherphy{
     {
     public:
         void run();
-        void initWindow();
         void initVulkan();
         std::vector<VkVertex>& getVerticesWrite();
         std::vector<uint32_t>& getIndicesWrite();
         void drawFrame();
-        bool shouldClose();
         void cleanUp();
     private:
         //------------------ System Initialization ----------------------------
@@ -256,9 +254,6 @@ namespace Sherphy{
         std::vector<VkFence> m_in_flight_fences;
         uint32_t m_current_frame = 0;
         bool m_frame_buffer_resized = false;
-
-        //------------------ GLFW Interface ----------------------------------
-        GLFWwindow* m_window;
 
         //------------------ Debug -------------------------------------------
         VkDebugUtilsMessengerEXT m_debug_messenger;

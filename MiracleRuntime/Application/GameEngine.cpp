@@ -2,7 +2,7 @@
 #include "World/WorldDataBase.h"
 #include "JadeBreaker/RHI/vulkan_rhi.h"
 #include "Resource/SceneLoader.h"
-#include "JadeBreaker/RHI/vulkan_rhi.h"
+#include "JadeBreaker/Display/GLFWDisplay.h"
 #include "Soul/GlobalContext/GlobalContext.h"
 
 namespace Sherphy 
@@ -11,13 +11,13 @@ namespace Sherphy
 		m_world_data = new WorldDataBase;
 	}
 
-
+	const uint32_t WIDTH = 800, HEIGHT = 600;
 	void GameEngine::init() 
 	{
 		m_world_data->addOne();
 		SceneLoader::LoadScene(m_world_data->getSceneAt(0));
 		g_miracle_global_context.startSystem();
-		g_miracle_global_context.m_rendering_system->initWindow();
+		g_miracle_global_context.m_display_system->init(WIDTH, HEIGHT);
 		swapData();
 		g_miracle_global_context.m_rendering_system->initVulkan();
 		return;
@@ -25,8 +25,9 @@ namespace Sherphy
 
 	void GameEngine::start() 
 	{
+		std::shared_ptr<GLFWDisplay> display_system = g_miracle_global_context.m_display_system;
 		std::shared_ptr<VulkanRHI> renderning_system = g_miracle_global_context.m_rendering_system;
-		while (renderning_system->shouldClose())
+		while (display_system->shouldClose())
 		{
 			swapData();
 			glfwPollEvents();

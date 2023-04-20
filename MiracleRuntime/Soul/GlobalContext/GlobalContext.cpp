@@ -1,5 +1,6 @@
 #include "GlobalContext.h"
 #include "Resource/FileSystem.h"
+#include "JadeBreaker/Display/GLFWDisplay.h"
 #include "JadeBreaker/RHI/vulkan_rhi.h"
 
 namespace Sherphy 
@@ -8,6 +9,7 @@ namespace Sherphy
 	void MiracleGlobalContext::startSystem() 
 	{
 		m_file_system = std::make_shared<FileSystem>();
+		m_display_system = std::make_shared<GLFWDisplay>();
 		m_rendering_system = std::make_shared<VulkanRHI>();
 	}
 
@@ -16,5 +18,7 @@ namespace Sherphy
 		m_file_system.reset();
 		m_rendering_system->cleanUp();
 		m_rendering_system.reset();
+		m_display_system->distroy();
+		m_display_system.reset();
 	}
 }

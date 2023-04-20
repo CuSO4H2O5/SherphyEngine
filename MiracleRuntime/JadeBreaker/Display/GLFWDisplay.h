@@ -22,6 +22,14 @@ namespace Sherphy
 		public :
 			void init(uint32_t width, uint32_t height);
 			void distroy();
+			GLFWwindow* getWindow() { return m_window; }
+			void getFramebufferSize(int& width, int& height);
+			bool shouldClose() { return !glfwWindowShouldClose(m_window);}
+			const char** getVkExtensions(uint32_t& count) { return glfwGetRequiredInstanceExtensions(&count);}
+			void waitEvents() { glfwWaitEvents(); return; }
+			void createWindowSurface(VkInstance instance,
+									const VkAllocationCallbacks* allocator,
+									VkSurfaceKHR* surface);
 			void tick();
 		private:
 			GLFWwindow* m_window;

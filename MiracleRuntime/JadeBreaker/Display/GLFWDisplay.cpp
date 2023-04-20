@@ -18,6 +18,19 @@ namespace Sherphy
 		glfwTerminate();
 	}
 
+	void GLFWDisplay::getFramebufferSize(int& width, int& height)
+	{
+		glfwGetFramebufferSize(m_window, &width, &height);
+		return;
+	}
+
+	void GLFWDisplay::createWindowSurface(VkInstance instance,
+										  const VkAllocationCallbacks* allocator,
+										  VkSurfaceKHR* surface)
+	{
+		SHERPHY_EXCEPTION_IF_FALSE(glfwCreateWindowSurface(instance, m_window, allocator, surface) == VK_SUCCESS, "failed to create window surface!");
+	}
+
 	void GLFWDisplay::tick() 
 	{
 		

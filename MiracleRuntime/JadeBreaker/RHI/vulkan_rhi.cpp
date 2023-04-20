@@ -1,6 +1,7 @@
 #include "vulkan_rhi.h"
 #include "Soul/Object.h"
 #include "Resource/FileSystem.h"
+#include "JadeBreaker/Display/GLFWDisplay.h"
 #include "Soul/GlobalContext/GlobalContext.h"
 
 #include <string.h>
@@ -8,20 +9,9 @@
 #include <chrono>
 #include <set>
 
-const uint32_t WIDTH = 800, HEIGHT = 600;
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace Sherphy{
-
-    void VulkanRHI::initWindow()
-    {   
-        glfwInit();
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-        m_window = glfwCreateWindow(WIDTH, HEIGHT, "Sherphy_Engine", nullptr, nullptr);
-    }
-
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
         std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 
@@ -118,10 +108,10 @@ namespace Sherphy{
 
     std::vector<const char*> VulkanRHI::getRequiredExtensions()
     {
-        uint32_t glfwExtensionsCount = 0;
-        const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
+        uint32_t display_extensions_count = 0;
+        const char** displayVkExtensions = g_miracle_global_context.m_display_system->getVkExtensions(display_extensions_count);;
 
-        std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionsCount);
+        std::vector<const char*> extensions(displayVkExtensions, displayVkExtensions + display_extensions_count);
 
         if(m_enable_validation_layer)
         {
@@ -800,13 +790,8 @@ namespace Sherphy{
         }
     }
 
-    bool VulkanRHI::shouldClose()
-    {
-        return !glfwWindowShouldClose(m_window);
-    }
-
     void VulkanRHI::createSurface() {
-        SHERPHY_EXCEPTION_IF_FALSE(glfwCreateWindowSurface(m_instance, m_window, nullptr, &m_surface) == VK_SUCCESS, "failed to create window surface!");
+        g_miracle_global_context.m_display_system->createWindowSurface(m_instance, nullptr, &m_surface);
     }
 
     void VulkanRHI::pickPhysicalDevice()
@@ -1497,7 +1482,7 @@ namespace Sherphy{
         }
         else {
             int width, height;
-            glfwGetFramebufferSize(m_window, &width, &height);
+            g_miracle_global_context.m_display_system->getFramebufferSize(width, height);
 
             VkExtent2D actual_extent = {
                 static_cast<uint32_t>(width),
@@ -1609,8 +1594,8 @@ namespace Sherphy{
     void VulkanRHI::recreateSwapChain() {
         int width = 0, height = 0;
         while (width == 0 || height == 0) {
-            glfwGetFramebufferSize(m_window, &width, &height);
-            glfwWaitEvents();
+            g_miracle_global_context.m_display_system->getFramebufferSize(width, height);
+            g_miracle_global_context.m_display_system->waitEvents();
         }
 
         vkDeviceWaitIdle(m_device);
@@ -1746,14 +1731,10 @@ namespace Sherphy{
 
         vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
         vkDestroyInstance(m_instance, nullptr);
-
-        glfwDestroyWindow(m_window);
-        glfwTerminate();
     }
 
     void VulkanRHI::run()
     {
-        initWindow();
         initVulkan();
         cleanUp();
     }
