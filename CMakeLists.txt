@@ -19,15 +19,20 @@ set(SHERPHY_ENGINE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(3RD_DIR "${SHERPHY_ENGINE_ROOT}/3rdparty")
 set(vulkan_include ${3RD_DIR}/VulkanSDK/include)
 
+# --- Options ---
+option(UsingEASTL "If using eastl to faster this project development" ON)
+option(Sherphy_CMAKE_DEBUG "Take on CMake Debug Message" OFF)
+option(SHERPHY_RUNTIME_DEBUG "Runtime SHERPHY_DEBUG" OFF)
+
 # --- Definations ---
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(WIN64 1)
   ADD_DEFINITIONS(-DWIN64)
 endif()
 
-# --- Options ---
-option(UsingEASTL "If using eastl to faster this project development" ON)
-option(Sherphy_CMAKE_DEBUG "Take on CMake Debug Message" OFF)
+if(SHERPHY_RUNTIME_DEBUG)
+  ADD_DEFINITIONS(-DSHERPHY_DEBUG)
+endif()
 
 # --- Add Lib Path ---
 set(glm_DIR ${3RD_DIR}/glm/glm)

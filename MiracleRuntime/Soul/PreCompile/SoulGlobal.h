@@ -11,7 +11,7 @@ namespace Sherphy{
     #ifdef SHERPHY_DEBUG
     #define SherphyAssert(_Expression) if(_Expression) ((void) 0)
     #else
-    #define SherphyAssert(_Expression)
+    #define SherphyAssert(_Expression) assert(_Expression);
     #endif
 
     #define SHERPHY_EXCEPTION_IF_FALSE(x, log) \
@@ -47,6 +47,8 @@ namespace Sherphy{
             LogMessage(log, WarningStage::Low); \
             continue; \
         } \
+    
+    #define SHERPHY_RENDERING_LOG(log) LogMessage("validation layer: " + static_cast<std::string>(log), WarningStage::Normal);
 
     #define SHERPHY_LOG(log) LogMessage(static_cast<std::string>(log), WarningStage::Normal);
 

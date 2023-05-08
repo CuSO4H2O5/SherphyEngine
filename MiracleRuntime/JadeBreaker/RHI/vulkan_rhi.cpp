@@ -13,8 +13,7 @@ const int MAX_FRAMES_IN_FLIGHT = 2;
 
 namespace Sherphy{
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
-        std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-
+        SHERPHY_RENDERING_LOG(pCallbackData->pMessage);
         return VK_FALSE;
     }
 
@@ -147,25 +146,70 @@ namespace Sherphy{
         return true;
     }
 
-    void VulkanRHI::initVulkan()
+    void VulkanRHI::initBasic(PipeLineType type) 
     {
         createInstance();
         setupDebugMessenger();
         createSurface();
         pickPhysicalDevice();
-        SHERPHY_EXCEPTION_IF_FALSE(m_physical_device, "Did not detected Proper Physical Device");
-        createLogicalDevice();
-        createSwapChain();
+        VkPhysicalDevice physical_device = m_physical_devices[m_pick_physical_device_id];
+        SHERPHY_EXCEPTION_IF_FALSE(physical_device, "Did not detected Proper Physical Device");
+        getPhysicalDeviceProperties(physical_device);
+        getEnabledFeatures(type);
+        createLogicalDevice(physical_device, m_device_features, m_device_extensions, m_device_create_pNext_chain);
+        createSwapChain(physical_device);
         createImageViews();
-        createRenderPass(RenderPassType::Normal);
-        createDescriptorSetLayout();
-        //std::vector<char> vertex_shader = FileSystem::readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_vert.spv");
-        //std::vector<char> fragment_shader = FileSystem::readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_frag.spv");
-        //createGraphicsPipeline(PipeLineType::TriangleTest, vertex_shader, fragment_shader);
+    }
+
+    void VulkanRHI::getEnabledFeatures(PipeLineType type) 
+    {
+        switch (type)
+        {
+        case Sherphy::PipeLineType::RayTracing:
+            getEnabledFeaturesRayTracing();
+            break;
+        default:
+            break;
+        }
+    }
+
+    void VulkanRHI::getEnabledFeaturesRayTracing()
+    {
+        // Enable features required for ray tracing using feature chaining via pNext		
+        m_enabled_buffer_device_addres_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+        m_enabled_buffer_device_addres_features.bufferDeviceAddress = VK_TRUE;
+
+        m_enabled_ray_tracing_pipeline_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+        m_enabled_ray_tracing_pipeline_features.rayTracingPipeline = VK_TRUE;
+        m_enabled_ray_tracing_pipeline_features.pNext = &m_enabled_buffer_device_addres_features;
+
+        m_enabled_acceleration_structure_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+        m_enabled_acceleration_structure_features.accelerationStructure = VK_TRUE;
+        m_enabled_acceleration_structure_features.pNext = &m_enabled_ray_tracing_pipeline_features;
+
+        m_device_create_pNext_chain = &m_enabled_acceleration_structure_features;
+    }
+
+    void VulkanRHI::getPhysicalDeviceProperties(VkPhysicalDevice& physical_device) 
+    {
+        vkGetPhysicalDeviceProperties(physical_device, &m_physical_device_properties);
+        vkGetPhysicalDeviceFeatures(physical_device, &m_physical_device_features);
+        vkGetPhysicalDeviceMemoryProperties(physical_device, &m_physical_device_memory_properties);
+        return;
+    }
+
+    void VulkanRHI::createRenderingStructure(PipeLineType type) 
+    {
+        createRenderPass();
         std::vector<char> vertex_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalShader_vert.spv");
         std::vector<char> fragment_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalColorOutput_frag.spv");
-        createGraphicsPipeline(PipeLineType::Normal, vertex_shader, fragment_shader);
+        createDescriptorSetLayout(type);
+        createGraphicsPipeline(type, vertex_shader, fragment_shader);
         createCommandPool();
+    }
+
+    void VulkanRHI::createRenderingMemory(PipeLineType type)
+    {
         createDepthResources();
         createFrameBuffers();
         createTextureImage();
@@ -174,9 +218,16 @@ namespace Sherphy{
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
-        createDescriptorPool();
-        createDescriptorSets();
+        createDescriptorPool(type);
+        createDescriptorSets(type);
         createCommandBuffer();
+    }
+
+    void VulkanRHI::initVulkan()
+    {
+        initBasic(PipeLineType::Normal);
+        createRenderingStructure(PipeLineType::Normal);
+        createRenderingMemory(PipeLineType::Normal);
         createSyncObjects();
     }
 
@@ -184,12 +235,26 @@ namespace Sherphy{
     {
         return m_vertices;
     }
+
     std::vector<uint32_t>& VulkanRHI::getIndicesWrite() 
     {
         return m_indices;
     }
 
-    void VulkanRHI::createDescriptorSets() 
+    void VulkanRHI::createDescriptorSets(PipeLineType type)
+    {
+        switch (type)
+        {
+        case PipeLineType::RayTracing:
+
+            break;
+        default:
+            createDescriptorSetsNormal();
+            break;
+        }
+    }
+
+    void VulkanRHI::createDescriptorSetsNormal() 
     {
         std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, m_descriptor_set_layout);
         VkDescriptorSetAllocateInfo alloc_info{};
@@ -231,9 +296,42 @@ namespace Sherphy{
 
             vkUpdateDescriptorSets(m_device, static_cast<uint32_t>(descriptor_write.size()), descriptor_write.data(), 0, nullptr);
         }
+        return;
     }
 
-    void VulkanRHI::createDescriptorPool() 
+    void VulkanRHI::createDescriptorSetsRayTracing() 
+    {
+
+    }
+
+    void VulkanRHI::createDescriptorPool(PipeLineType type) 
+    {
+        switch (type)
+        {
+        case Sherphy::PipeLineType::TriangleTest:
+            createDescriptorPoolNormal();
+            break;
+        case Sherphy::PipeLineType::Normal:
+            createDescriptorPoolNormal();
+            break;
+        case Sherphy::PipeLineType::Uniform:
+            createDescriptorPoolNormal();
+            break;
+        case Sherphy::PipeLineType::RayTracing:
+            createDescriptorPoolRayTracing();
+            break;
+        default:
+            createDescriptorPoolNormal();
+            break;
+        }
+    }
+
+    void VulkanRHI::createDescriptorPoolRayTracing() 
+    {
+
+    }
+
+    void VulkanRHI::createDescriptorPoolNormal() 
     {
         std::array<VkDescriptorPoolSize, 2> pool_size{};
         pool_size[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -283,10 +381,57 @@ namespace Sherphy{
         ubo.proj = glm::perspective(glm::radians(45.0f), m_extent.width / (float)m_extent.height, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
-        memcpy(m_uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
+        SHERPHY_MEMCPY(m_uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
     }
 
-    void VulkanRHI::createDescriptorSetLayout() 
+    void VulkanRHI::createDescriptorSetLayout(PipeLineType type)
+    {
+        switch (type)
+        {
+            case PipeLineType::RayTracing:
+                createDescriptorSetLayoutRayTracing();
+                break;
+            default:
+                createDescriptorSetLayoutNormal();
+                break;
+        }
+        return;
+    }
+
+    void VulkanRHI::createDescriptorSetLayoutRayTracing()
+    {
+        VkDescriptorSetLayoutBinding acceleration_structure_layout_binding{};
+        acceleration_structure_layout_binding.binding = 0;
+        acceleration_structure_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        acceleration_structure_layout_binding.descriptorCount = 1;
+        acceleration_structure_layout_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+
+        VkDescriptorSetLayoutBinding result_image_layout_binding{};
+        result_image_layout_binding.binding = 1;
+        result_image_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        result_image_layout_binding.descriptorCount = 1;
+        result_image_layout_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+
+        VkDescriptorSetLayoutBinding uniform_buffer_binding{};
+        uniform_buffer_binding.binding = 2;
+        uniform_buffer_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uniform_buffer_binding.descriptorCount = 1;
+        uniform_buffer_binding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings({
+            acceleration_structure_layout_binding,
+            result_image_layout_binding,
+            uniform_buffer_binding
+            });
+
+        VkDescriptorSetLayoutCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        create_info.bindingCount = static_cast<uint32_t>(bindings.size());
+        create_info.pBindings = bindings.data();
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device, &create_info, nullptr, &m_descriptor_set_layout), "RayTracing Descriptor Layout Creation Failed");
+    }
+
+    void VulkanRHI::createDescriptorSetLayoutNormal() 
     {
         VkDescriptorSetLayoutBinding ubo_layout_binding{};
         ubo_layout_binding.binding = 0;
@@ -310,6 +455,7 @@ namespace Sherphy{
 
         SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS,
             "failed to create descriptor set layout!");
+        return;
     }
 
     void VulkanRHI::createBuffer(VkDeviceSize size, 
@@ -375,7 +521,7 @@ namespace Sherphy{
 
         void* data;
         vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data);
-        memcpy(data, m_indices.data(), (size_t)buffer_size);
+        SHERPHY_MEMCPY(data, m_indices.data(), (size_t)buffer_size);
         vkUnmapMemory(m_device, staging_buffer_memory);
 
         createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_index_buffer, m_index_buffer_memory);
@@ -399,11 +545,8 @@ namespace Sherphy{
 
     uint32_t VulkanRHI::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties)
     {
-        VkPhysicalDeviceMemoryProperties mem_properties;
-        vkGetPhysicalDeviceMemoryProperties(m_physical_device, &mem_properties);
-
-        for (uint32_t i = 0; i < mem_properties.memoryTypeCount; i++) {
-            if (type_filter & (1 << i) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+        for (uint32_t i = 0; i < m_physical_device_memory_properties.memoryTypeCount; i++) {
+            if (type_filter & (1 << i) && (m_physical_device_memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
                 return i;
             }
         }
@@ -411,21 +554,9 @@ namespace Sherphy{
         SHERPHY_EXCEPTION_IF_FALSE(false, "failed to find suitable memory type!");
     }
 
-    void VulkanRHI::createRenderPass(RenderPassType type) 
+    void VulkanRHI::createRenderPass() 
     {
-        switch (type)
-        {
-        case Sherphy::RenderPassType::Normal:
-            createRenderPassNormal();
-            break;
-        case Sherphy::RenderPassType::RayTracing:
-            //createRenderPassRayTracing();
-            break;
-        default:
-            createRenderPassNormal();
-            break;
-        }
-
+        createRenderPassNormal();
         return;
     }
 
@@ -531,12 +662,10 @@ namespace Sherphy{
 
     void VulkanRHI::createCommandPool() 
     {
-        QueueFamilyIndices queue_family_indices = findQueueFamilies(m_physical_device);
-
         VkCommandPoolCreateInfo pool_info{};
         pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+        pool_info.queueFamilyIndex = m_queue_family_indices.graphics_family.value();
 
         SHERPHY_EXCEPTION_IF_FALSE(vkCreateCommandPool(m_device, &pool_info, nullptr, &m_command_pool) == VK_SUCCESS, "failed to create command pool!");
 
@@ -550,10 +679,10 @@ namespace Sherphy{
         m_depth_image_view = createImageView(m_depth_image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
     }
 
-    VkFormat VulkanRHI::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+    VkFormat VulkanRHI::findSupportedFormat(VkPhysicalDevice device, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
         for (VkFormat format : candidates) {
             VkFormatProperties props;
-            vkGetPhysicalDeviceFormatProperties(m_physical_device, format, &props);
+            vkGetPhysicalDeviceFormatProperties(device, format, &props);
 
             if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
                 return format;
@@ -567,7 +696,7 @@ namespace Sherphy{
     }
 
     VkFormat VulkanRHI::findDepthFormat() {
-        return findSupportedFormat(
+        return findSupportedFormat(m_physical_devices[m_pick_physical_device_id],
             { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
             VK_IMAGE_TILING_OPTIMAL,
             VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
@@ -588,7 +717,7 @@ namespace Sherphy{
 
         void* data;
         vkMapMemory(m_device, staging_buffer_memory, 0, image_size, 0, &data);
-            memcpy(data, pixels, static_cast<size_t>(image_size));
+        SHERPHY_MEMCPY(data, pixels, static_cast<size_t>(image_size));
         vkUnmapMemory(m_device, staging_buffer_memory);
 
         g_miracle_global_context.m_file_system->releaseImageAsset(pixels);
@@ -631,9 +760,6 @@ namespace Sherphy{
 
     void VulkanRHI::createTextureSampler()
     {
-        VkPhysicalDeviceProperties properties{};
-        vkGetPhysicalDeviceProperties(m_physical_device, &properties);
-
         VkSamplerCreateInfo sampler_info{};
         sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         sampler_info.magFilter = VK_FILTER_LINEAR;
@@ -642,7 +768,7 @@ namespace Sherphy{
         sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.anisotropyEnable = VK_TRUE;
-        sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+        sampler_info.maxAnisotropy = m_physical_device_properties.limits.maxSamplerAnisotropy;
         sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
         sampler_info.unnormalizedCoordinates = VK_FALSE;
         sampler_info.compareEnable = VK_FALSE;
@@ -798,51 +924,59 @@ namespace Sherphy{
     {
         uint32_t device_count = 0;
         vkEnumeratePhysicalDevices(m_instance, &device_count, nullptr);
-        std::vector<VkPhysicalDevice> devices(device_count);
-        vkEnumeratePhysicalDevices(m_instance, &device_count, devices.data());
+        m_physical_devices.clear();
+        m_physical_devices.resize(device_count);
+        vkEnumeratePhysicalDevices(m_instance, &device_count, m_physical_devices.data());
 
         SHERPHY_EXCEPTION_IF_FALSE(device_count > 0, "Failed to Find Graphic Device with Vulkan Support\n");
 
-        for (VkPhysicalDevice& device : devices)
+        for (uint32_t device_id = 0; device_id < device_count; device_id++)
         {
+            VkPhysicalDevice& device = m_physical_devices[device_id];
             SHERPHY_CONTINUE_WITH_LOG(device, "WTF");
             if (isDeviceSuitable(device))
             {
                 VkPhysicalDeviceProperties prop;
                 vkGetPhysicalDeviceProperties(device, &prop);
                 SHERPHY_LOG(prop.deviceName);
-                m_physical_device = device;
+                m_pick_physical_device_id = device_id;
                 break;
             }
         }
     }
 
-    void VulkanRHI::createLogicalDevice()
+    void VulkanRHI::createLogicalDevice(VkPhysicalDevice device, VkPhysicalDeviceFeatures enabled_features, const std::vector<const char*>& enabled_extensions, const void* pNext_chain, bool use_swap_chain)
     {
-        QueueFamilyIndices indices = findQueueFamilies(m_physical_device);
+        m_queue_family_indices = findQueueFamilies(device);
 
         std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
-        std::set<uint32_t> unique_queue_families = {indices.graphics_family.value(), indices.present_family.value()};
+        std::set<uint32_t> unique_queue_families = { m_queue_family_indices.graphics_family.value(), m_queue_family_indices.present_family.value()};
 
         for (uint32_t queue_family : unique_queue_families) 
         {
             VkDeviceQueueCreateInfo queue_create_info{};
             queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queue_create_info.queueFamilyIndex = indices.graphics_family.value();
+            queue_create_info.queueFamilyIndex = m_queue_family_indices.graphics_family.value();
             queue_create_info.queueCount = 1;
             queue_create_info.pQueuePriorities = &m_queue_prioity;
             queue_create_infos.push_back(queue_create_info);
         }
 
-        m_device_features.samplerAnisotropy = VK_TRUE;
+        std::vector<const char*> device_extensions(enabled_extensions);
+        if (use_swap_chain)
+        {
+            device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        }
+
+        enabled_features.samplerAnisotropy = VK_TRUE;
 
         VkDeviceCreateInfo create_info{};
         create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
         create_info.pQueueCreateInfos = queue_create_infos.data();
-        create_info.pEnabledFeatures = &m_device_features;
-        create_info.enabledExtensionCount = static_cast<uint32_t>(m_device_extensions.size());
-        create_info.ppEnabledExtensionNames = m_device_extensions.data();
+        create_info.pEnabledFeatures = &enabled_features;
+        create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
+        create_info.ppEnabledExtensionNames = device_extensions.data();
         if (m_enable_validation_layer) 
         {
             create_info.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
@@ -852,14 +986,14 @@ namespace Sherphy{
         {
             create_info.enabledLayerCount = 0;
         }
-        SHERPHY_EXCEPTION_IF_FALSE((vkCreateDevice(m_physical_device, &create_info, nullptr, &m_device) == VK_SUCCESS), "faild to create logical device")
-        vkGetDeviceQueue(m_device, indices.graphics_family.value(), 0, &m_graphics_queue);
-        vkGetDeviceQueue(m_device, indices.present_family.value(), 0, &m_present_queue);
+        SHERPHY_EXCEPTION_IF_FALSE((vkCreateDevice(device, &create_info, nullptr, &m_device) == VK_SUCCESS), "faild to create logical device")
+        vkGetDeviceQueue(m_device, m_queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
+        vkGetDeviceQueue(m_device, m_queue_family_indices.present_family.value(), 0, &m_present_queue);
     }
 
-    void VulkanRHI::createSwapChain() 
+    void VulkanRHI::createSwapChain(VkPhysicalDevice device)
     {
-        SwapChainSupportDetails swap_chain_support = querySwapChainSupport(m_physical_device);
+        SwapChainSupportDetails swap_chain_support = querySwapChainSupport(device);
 
         VkSurfaceFormatKHR surface_format = chooseSwapSurfaceFormat(swap_chain_support.formats);
         VkPresentModeKHR present_mode = chooseSwapPresentMode(swap_chain_support.present_modes);
@@ -882,10 +1016,9 @@ namespace Sherphy{
         create_info.imageArrayLayers = 1;
         create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        QueueFamilyIndices indices = findQueueFamilies(m_physical_device);
-        uint32_t queueFamilyIndices[] = { indices.graphics_family.value(), indices.present_family.value() };
+        uint32_t queueFamilyIndices[] = { m_queue_family_indices.graphics_family.value(), m_queue_family_indices.present_family.value() };
 
-        if (indices.graphics_family != indices.present_family) {
+        if (m_queue_family_indices.graphics_family != m_queue_family_indices.present_family) {
             create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
             create_info.queueFamilyIndexCount = 2;
             create_info.pQueueFamilyIndices = queueFamilyIndices;
@@ -996,7 +1129,7 @@ namespace Sherphy{
         return;
     }
     
-    void VulkanRHI::createGraphicsPipeline(PipeLineType type, std::vector<char>& vertex_shader, std::vector<char>& fragment_shader) 
+    void VulkanRHI::createGraphicsPipeline(PipeLineType type, std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
     {
         switch (type)
         {
@@ -1010,11 +1143,97 @@ namespace Sherphy{
             createGraphicsPipelineUniform(vertex_shader, fragment_shader);
             break;
         case PipeLineType::RayTracing:
+            //createGraphicsPipelineRayTracing(vertex_shader, fragment_shader, closest_hit_shader);
             break;
         default:
             createGraphicsPipelineNormal(vertex_shader, fragment_shader);
             break;
         }
+    }
+    
+    VkPipelineShaderStageCreateInfo VulkanRHI::loadShader(std::vector<char>& shader, VkShaderStageFlagBits stage)
+    {
+        VkPipelineShaderStageCreateInfo shader_stage_info{};
+        shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shader_stage_info.stage = stage;
+        shader_stage_info.pName = "main";
+        shader_stage_info.module = createShaderModule(shader);
+        m_managed_shader_modules.push_back(shader_stage_info.module);
+        return shader_stage_info;
+    }
+
+    void VulkanRHI::cleanShader() 
+    {
+        for (auto shader_modules : m_managed_shader_modules) 
+        {
+            vkDestroyShaderModule(m_device, shader_modules, nullptr);
+        }
+        m_managed_shader_modules.clear();
+        return;
+    }
+
+    void VulkanRHI::createGraphicsPipelineRayTracing(std::vector<char>& raygen_shader,
+                                                     std::vector<char>& raymiss_shader,
+                                                     std::vector<char>& closest_hit_shader)
+    {
+        VkPipelineLayoutCreateInfo pipeline_layout_create_info{};
+        pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipeline_layout_create_info.setLayoutCount = 1;
+        pipeline_layout_create_info.pSetLayouts = &m_descriptor_set_layout;
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device, &pipeline_layout_create_info, nullptr, &m_pipeline_layout), "");
+
+        std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+        std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups;
+
+        // Ray generation group
+        {
+            shaderStages.push_back(loadShader(raygen_shader, VK_SHADER_STAGE_RAYGEN_BIT_KHR));
+            VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
+            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+            shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
+            shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shaderGroups.push_back(shaderGroup);
+        }
+
+        // Miss group
+        {
+            shaderStages.push_back(loadShader(raymiss_shader, VK_SHADER_STAGE_MISS_BIT_KHR));
+            VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
+            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+            shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
+            shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shaderGroups.push_back(shaderGroup);
+        }
+
+        // Closest hit group
+        {
+            shaderStages.push_back(loadShader(closest_hit_shader, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
+            VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
+            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+            shaderGroup.generalShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.closestHitShader = static_cast<uint32_t>(shaderStages.size()) - 1;
+            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shaderGroups.push_back(shaderGroup);
+        }
+
+        VkRayTracingPipelineCreateInfoKHR rayTracingPipelineCI{};
+        rayTracingPipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
+        rayTracingPipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
+        rayTracingPipelineCI.pStages = shaderStages.data();
+        rayTracingPipelineCI.groupCount = static_cast<uint32_t>(shaderGroups.size());
+        rayTracingPipelineCI.pGroups = shaderGroups.data();
+        rayTracingPipelineCI.maxPipelineRayRecursionDepth = 1;
+        rayTracingPipelineCI.layout = m_pipeline_layout;
+
+        //SHERPHY_EXCEPTION_IF_FALSE(vkCreateRayTracingPipelinesKHR(m_device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "create RayTracingPipeline Faild");
     }
 
     //TODO Uniform Type
@@ -1325,24 +1544,24 @@ namespace Sherphy{
         input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         input_assembly.primitiveRestartEnable = VK_FALSE;
 
-        //VkViewport viewport{};
-        //viewport.x = 0.0f;
-        //viewport.y = 0.0f;
-        //viewport.width = (float)m_extent.width;
-        //viewport.height = (float)m_extent.height;
-        //viewport.minDepth = 0.0f;
-        //viewport.maxDepth = 1.0f;
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float)m_extent.width;
+        viewport.height = (float)m_extent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
 
-        //VkRect2D scissor{};
-        //scissor.offset = { 0, 0 };
-        //scissor.extent = m_extent;
+        VkRect2D scissor{};
+        scissor.offset = { 0, 0 };
+        scissor.extent = m_extent;
 
         VkPipelineViewportStateCreateInfo viewport_state{};
         viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
         viewport_state.viewportCount = 1;
-        //viewport_state.pViewports = &viewport;
+        viewport_state.pViewports = &viewport;
         viewport_state.scissorCount = 1;
-        //viewport_state.pScissors = &scissor;
+        viewport_state.pScissors = &scissor;
 
         VkPipelineRasterizationStateCreateInfo rasterizer{};
         rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -1543,13 +1762,14 @@ namespace Sherphy{
         QueueFamilyIndices indices;
         uint32_t queue_family_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
-        std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
-
+        SherphyAssert(queue_family_count > 0, "Device Queue Family Properties is null");
+        m_device_queue_families.resize(queue_family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, m_device_queue_families.data());
 
         VkBool32 present_support = false;
-        for (size_t i = 0; i < queue_families.size(); i++) {
-            if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) 
+        for (size_t i = 0; i < m_device_queue_families.size(); i++)
+        {
+            if (m_device_queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
             {
                 indices.graphics_family = i;
             }
@@ -1602,7 +1822,7 @@ namespace Sherphy{
 
         cleanupSwapChain();
 
-        createSwapChain();
+        createSwapChain(m_physical_devices[m_pick_physical_device_id]);
         createImageViews();
         createDepthResources();
         createFrameBuffers();
@@ -1696,6 +1916,7 @@ namespace Sherphy{
         vkDeviceWaitIdle(m_device);
         cleanupSwapChain();
 
+        cleanShader();
         vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
         vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
         vkDestroyRenderPass(m_device, m_render_pass, nullptr);

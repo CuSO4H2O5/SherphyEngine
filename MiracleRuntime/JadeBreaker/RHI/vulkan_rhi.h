@@ -26,11 +26,6 @@ namespace Sherphy{
         RayTracing
     };
 
-    enum class RenderPassType {
-        Normal,
-        RayTracing
-    };
-
     struct SwapChainSupportDetails 
     {
         VkSurfaceCapabilitiesKHR capabilities{};
@@ -48,23 +43,48 @@ namespace Sherphy{
         void drawFrame();
         void cleanUp();
     private:
+        void initBasic(PipeLineType type);
+        void createRenderingStructure(PipeLineType type);
+        void createRenderingMemory(PipeLineType type);
+    private:
         //------------------ System Initialization ----------------------------
         void createSurface();
         void pickPhysicalDevice();
-        void createLogicalDevice();
+        void getPhysicalDeviceProperties(VkPhysicalDevice& physical_device);
+        void getEnabledFeatures(PipeLineType type);
+        void getEnabledFeaturesRayTracing();
+        void createLogicalDevice(VkPhysicalDevice device, VkPhysicalDeviceFeatures enabled_features, const std::vector<const char*>& enabled_extensions, const void* pNext_chain, bool use_swap_chain = true);
 
-        void createSwapChain();
+        void createSwapChain(VkPhysicalDevice deivce);
         void recreateSwapChain();
         void cleanupSwapChain();
 
         void createImageViews();
-        void createRenderPass(RenderPassType type);
-        void createDescriptorSetLayout();
-        void createDescriptorPool();
-        void createDescriptorSets();
+        void createRenderPass();
+        void createDescriptorSetLayout(PipeLineType type);
+        void createDescriptorSetLayoutNormal();
+        void createDescriptorSetLayoutRayTracing();
+        void createDescriptorPool(PipeLineType type);
+        void createDescriptorPoolNormal();
+        void createDescriptorPoolRayTracing();
+        void createDescriptorSets(PipeLineType type);
+        void createDescriptorSetsNormal();
+        void createDescriptorSetsRayTracing();
         void createGraphicsPipeline(PipeLineType type, 
                                     std::vector<char>& vertex_shader, 
                                     std::vector<char>& fragment_shader);
+        void createGraphicsPipelineNormal(std::vector<char>& vertex_shader,
+                                          std::vector<char>& fragment_shader);
+        void createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader,
+                                                std::vector<char>& fragment_shader);
+        void createGraphicsPipelineUniform(std::vector<char>& vertex_shader,
+                                           std::vector<char>& fragment_shader);
+        void createGraphicsPipelineRayTracing(std::vector<char>& raygen_shader,
+                                              std::vector<char>& raymiss_shader,
+                                              std::vector<char>& closest_hit_shader);
+        VkPipelineShaderStageCreateInfo loadShader(std::vector<char>& shader, VkShaderStageFlagBits stage);
+        VkShaderModule createShaderModule(const std::vector<char>& code);
+        void cleanShader();
 
         void createTextureImage();
         VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags);
@@ -96,7 +116,7 @@ namespace Sherphy{
         void createIndexBuffer();
         void createDepthResources();
         VkFormat findDepthFormat();
-        VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+        VkFormat findSupportedFormat(VkPhysicalDevice device, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 
         void createUniformBuffers();
         void updateUniformBuffer(uint32_t current_image);
@@ -116,13 +136,6 @@ namespace Sherphy{
         void createSyncObjects();
 
         void createRenderPassNormal();
-        void createGraphicsPipelineNormal(std::vector<char>& vertex_shader,
-                                          std::vector<char>& fragment_shader);
-        void createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader, 
-                                                std::vector<char>& fragment_shader);
-        void createGraphicsPipelineUniform(std::vector<char>& vertex_shader, 
-                                           std::vector<char>& fragment_shader);
-        VkShaderModule createShaderModule(const std::vector<char>& code);
 
 
         //------------------- Check Pick --------------------------------------
@@ -151,14 +164,26 @@ namespace Sherphy{
     private:
         //----------------- Vk Device Part ---------------------------
         VkInstance m_instance;
-        //std::vector<VkExtensionProperties> m_extensions;
-        //uint32_t m_extensions_count;
+        
+        std::vector<VkPhysicalDevice> m_physical_devices;
+        uint32_t m_pick_physical_device_id = std::numeric_limits<uint32_t>::max();
+
+        VkPhysicalDeviceProperties m_physical_device_properties;
+        VkPhysicalDeviceFeatures m_physical_device_features;
+        VkPhysicalDeviceMemoryProperties m_physical_device_memory_properties;
+
+        std::vector<VkQueueFamilyProperties> m_device_queue_families;
+        QueueFamilyIndices m_queue_family_indices;
+
+        void* m_device_create_pNext_chain = nullptr;
 
         VkDevice m_device;
-        VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
-
         std::vector<const char*> m_validation_layers = {
             "VK_LAYER_KHRONOS_validation"
+        };
+
+        const std::vector<const char*> m_device_extensions = {
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME
         };
 
 #ifdef SHERPHY_DEBUG
@@ -177,9 +202,6 @@ namespace Sherphy{
         VkQueue m_present_queue;
 
         //------------------ Vk Swap Chain -----------------------------------
-        const std::vector<const char*> m_device_extensions = {
-            VK_KHR_SWAPCHAIN_EXTENSION_NAME
-        };
         VkSwapchainKHR m_swap_chain;
         std::vector<VkImage> m_swap_chain_images;
 
@@ -198,6 +220,9 @@ namespace Sherphy{
         VkRenderPass m_render_pass;
         VkPipelineLayout m_pipeline_layout;
         VkPipeline m_graphics_pipeline;
+
+        //------------------ Shader Asset -------------------------------------
+        std::vector<VkShaderModule> m_managed_shader_modules;
 
         //------------------ Global Buffers Pipeline ----------------------------------
         VkDescriptorSetLayout m_descriptor_set_layout;
@@ -258,5 +283,10 @@ namespace Sherphy{
         //------------------ Debug -------------------------------------------
         VkDebugUtilsMessengerEXT m_debug_messenger;
 
+
+        //------------------ RayTracingLine ----------------------------------
+        VkPhysicalDeviceBufferDeviceAddressFeatures m_enabled_buffer_device_addres_features{};
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR m_enabled_ray_tracing_pipeline_features{};
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR m_enabled_acceleration_structure_features{};
     };
 }
