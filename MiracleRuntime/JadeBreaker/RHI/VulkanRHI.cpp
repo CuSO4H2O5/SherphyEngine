@@ -1,8 +1,10 @@
-#include "vulkan_rhi.h"
+#include "VulkanRHI.h"
 #include "Soul/Object.h"
 #include "Resource/FileSystem.h"
 #include "JadeBreaker/Display/GLFWDisplay.h"
 #include "Soul/GlobalContext/GlobalContext.h"
+
+#include <volk.h>
 
 #include <string.h>
 #include <algorithm>
@@ -15,13 +17,6 @@ namespace Sherphy{
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
         SHERPHY_RENDERING_LOG(pCallbackData->pMessage);
         return VK_FALSE;
-    }
-
-    void VulkanRHI::DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks* pAllocator) {
-        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-        if (func != nullptr) {
-            func(instance, debug_messenger, pAllocator);
-        }
     }
 
     void VulkanRHI::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create_info) {
@@ -73,7 +68,6 @@ namespace Sherphy{
         }
 
         
-// VkResult result = ;
         SHERPHY_EXCEPTION_IF_FALSE(vkCreateInstance(&create_info, nullptr, &m_instance) == VK_SUCCESS, "create vk instance failed!\n");
 
 #ifdef SHERPHY_DEBUG
@@ -83,7 +77,7 @@ namespace Sherphy{
             std::cout << '\t' << extension << '\n';
         }
 #endif
-
+        volkLoadInstance(m_instance);
     }
 
     VkResult VulkanRHI::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
@@ -150,15 +144,47 @@ namespace Sherphy{
     {
         createInstance();
         setupDebugMessenger();
+        setupRequiredDeviceExtensions(type);
         createSurface();
         pickPhysicalDevice();
-        VkPhysicalDevice physical_device = m_physical_devices[m_pick_physical_device_id];
-        SHERPHY_EXCEPTION_IF_FALSE(physical_device, "Did not detected Proper Physical Device");
-        getPhysicalDeviceProperties(physical_device);
+        m_device.getPhysicalDeviceProperties();
         getEnabledFeatures(type);
-        createLogicalDevice(physical_device, m_device_features, m_device_extensions, m_device_create_pNext_chain);
-        createSwapChain(physical_device);
+        m_device.createLogicalDevice(m_surface, m_device_features, m_device_extensions, m_logical_device_create_pNext_chain);
+        vkGetDeviceQueue(m_device.m_logical_device, m_device.m_queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
+        vkGetDeviceQueue(m_device.m_logical_device, m_device.m_queue_family_indices.present_family.value(), 0, &m_present_queue);
+        createSwapChain(m_device.m_physical_device);
         createImageViews();
+    }
+
+    void VulkanRHI::setupRequiredDeviceExtensions(PipeLineType type) 
+    {
+        switch (type)
+        {
+        case Sherphy::PipeLineType::TriangleTest:
+            break;
+        case Sherphy::PipeLineType::Normal:
+            break;
+        case Sherphy::PipeLineType::Uniform:
+            break;
+        case Sherphy::PipeLineType::RayTracing:
+            // Ray tracing related extensions required by raytracing
+            m_device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+            m_device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+
+            // Required by VK_KHR_acceleration_structure
+            m_device_extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+            m_device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+            m_device_extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+
+            // Required for VK_KHR_ray_tracing_pipeline
+            m_device_extensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+
+            // Required by VK_KHR_spirv_1_4
+            m_device_extensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+            break;
+        default:
+            break;
+        }
     }
 
     void VulkanRHI::getEnabledFeatures(PipeLineType type) 
@@ -187,29 +213,19 @@ namespace Sherphy{
         m_enabled_acceleration_structure_features.accelerationStructure = VK_TRUE;
         m_enabled_acceleration_structure_features.pNext = &m_enabled_ray_tracing_pipeline_features;
 
-        m_device_create_pNext_chain = &m_enabled_acceleration_structure_features;
-    }
-
-    void VulkanRHI::getPhysicalDeviceProperties(VkPhysicalDevice& physical_device) 
-    {
-        vkGetPhysicalDeviceProperties(physical_device, &m_physical_device_properties);
-        vkGetPhysicalDeviceFeatures(physical_device, &m_physical_device_features);
-        vkGetPhysicalDeviceMemoryProperties(physical_device, &m_physical_device_memory_properties);
-        return;
+        m_logical_device_create_pNext_chain = &m_enabled_acceleration_structure_features;
     }
 
     void VulkanRHI::createRenderingStructure(PipeLineType type) 
     {
-        createRenderPass();
         std::vector<char> vertex_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalShader_vert.spv");
         std::vector<char> fragment_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalColorOutput_frag.spv");
-        createDescriptorSetLayout(type);
         createGraphicsPipeline(type, vertex_shader, fragment_shader);
-        createCommandPool();
     }
 
-    void VulkanRHI::createRenderingMemory(PipeLineType type)
+    void VulkanRHI::allocRenderingMemory(PipeLineType type)
     {
+        m_device.createCommandBuffers(MAX_FRAMES_IN_FLIGHT);
         createDepthResources();
         createFrameBuffers();
         createTextureImage();
@@ -217,17 +233,20 @@ namespace Sherphy{
         createTextureSampler();
         createVertexBuffer();
         createIndexBuffer();
+        createTransformBuffer();
         createUniformBuffers();
         createDescriptorPool(type);
         createDescriptorSets(type);
-        createCommandBuffer();
     }
 
-    void VulkanRHI::initVulkan()
+    void VulkanRHI::initVulkan(PipeLineType type)
     {
-        initBasic(PipeLineType::Normal);
-        createRenderingStructure(PipeLineType::Normal);
-        createRenderingMemory(PipeLineType::Normal);
+        volkInitialize();
+        initBasic(type);
+        createRenderPass();
+        createDescriptorSetLayout(type);
+        allocRenderingMemory(type);
+        createRenderingStructure(type);
         createSyncObjects();
     }
 
@@ -264,11 +283,11 @@ namespace Sherphy{
         alloc_info.pSetLayouts = layouts.data();
 
         m_descriptor_sets.resize(MAX_FRAMES_IN_FLIGHT);
-        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateDescriptorSets(m_device, &alloc_info, m_descriptor_sets.data()) == VK_SUCCESS, "failed to allocate descriptor sets!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateDescriptorSets(m_device.m_logical_device, &alloc_info, m_descriptor_sets.data()) == VK_SUCCESS, "failed to allocate descriptor sets!");
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             VkDescriptorBufferInfo buffer_info{};
-            buffer_info.buffer = m_uniform_buffers[i];
+            buffer_info.buffer = m_uniform_buffers[i].buffer;
             buffer_info.offset = 0;
             buffer_info.range = sizeof(VkUniformBufferObject);
 
@@ -294,7 +313,7 @@ namespace Sherphy{
             descriptor_write[1].descriptorCount = 1;
             descriptor_write[1].pImageInfo = &image_info;
 
-            vkUpdateDescriptorSets(m_device, static_cast<uint32_t>(descriptor_write.size()), descriptor_write.data(), 0, nullptr);
+            vkUpdateDescriptorSets(m_device.m_logical_device, static_cast<uint32_t>(descriptor_write.size()), descriptor_write.data(), 0, nullptr);
         }
         return;
     }
@@ -345,7 +364,7 @@ namespace Sherphy{
         pool_info.pPoolSizes = pool_size.data();
         pool_info.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorPool(m_device, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "failed to create descriptor pool!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorPool(m_device.m_logical_device, &pool_info, nullptr, &m_descriptor_pool) == VK_SUCCESS, "failed to create descriptor pool!");
     }
 
     void VulkanRHI::createUniformBuffers()
@@ -353,14 +372,12 @@ namespace Sherphy{
         VkDeviceSize buffer_size = sizeof(VkUniformBufferObject);
 
         m_uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
-        m_uniform_buffers_memory.resize(MAX_FRAMES_IN_FLIGHT);
-        m_uniform_buffers_mapped.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                m_uniform_buffers[i], m_uniform_buffers_memory[i]);
+            m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_uniform_buffers[i]);
 
-            vkMapMemory(m_device, m_uniform_buffers_memory[i], 0, buffer_size, 0, &m_uniform_buffers_mapped[i]);
+            vkMapMemory(m_device.m_logical_device, m_uniform_buffers[i].memory, 0, buffer_size, 0, &m_uniform_buffers[i].mapped);
         }
     }
 
@@ -381,7 +398,7 @@ namespace Sherphy{
         ubo.proj = glm::perspective(glm::radians(45.0f), m_extent.width / (float)m_extent.height, 0.1f, 10.0f);
         ubo.proj[1][1] *= -1;
 
-        SHERPHY_MEMCPY(m_uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
+        SHERPHY_MEMCPY(m_uniform_buffers[current_image].mapped, &ubo, sizeof(ubo));
     }
 
     void VulkanRHI::createDescriptorSetLayout(PipeLineType type)
@@ -428,7 +445,7 @@ namespace Sherphy{
         create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         create_info.bindingCount = static_cast<uint32_t>(bindings.size());
         create_info.pBindings = bindings.data();
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device, &create_info, nullptr, &m_descriptor_set_layout), "RayTracing Descriptor Layout Creation Failed");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device.m_logical_device, &create_info, nullptr, &m_descriptor_set_layout), "RayTracing Descriptor Layout Creation Failed");
     }
 
     void VulkanRHI::createDescriptorSetLayoutNormal() 
@@ -453,159 +470,65 @@ namespace Sherphy{
         layout_info.bindingCount = bindings.size();
         layout_info.pBindings = bindings.data();
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS,
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device.m_logical_device, &layout_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS,
             "failed to create descriptor set layout!");
         return;
     }
-
-    void VulkanRHI::createBuffer(VkDeviceSize size, 
-                                           VkBufferUsageFlags usage, 
-                                           VkMemoryPropertyFlags properties, 
-                                           VkBuffer& buffer, 
-                                           VkDeviceMemory& buffer_memory)
-    {
-        VkBufferCreateInfo buffer_info{};
-        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        buffer_info.size = size;
-        buffer_info.usage = usage;
-        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateBuffer(m_device, &buffer_info, nullptr, &buffer) == VK_SUCCESS, "failed to create vertex buffer!");
-
-        VkMemoryRequirements mem_requirements;
-        vkGetBufferMemoryRequirements(m_device, buffer, &mem_requirements);
-
-        VkMemoryAllocateInfo alloc_info{};
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
-
-        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateMemory(m_device, &alloc_info, nullptr, &buffer_memory) == VK_SUCCESS, "failed to allocate vertex buffer memory!");
-        vkBindBufferMemory(m_device, buffer, buffer_memory, 0);
-    }
-
 
     void VulkanRHI::createVertexBuffer() 
     {
         SHERPHY_EXCEPTION_IF_FALSE(m_vertices.size() != 0, "no vertices input\n");
         VkDeviceSize buffer_size = sizeof(m_vertices[0]) * m_vertices.size();
 
-        VkBuffer staging_buffer;
-        VkDeviceMemory staging_buffer_memory;
-        createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+        VulkanBuffer staging_buffer;
+        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     staging_buffer, staging_buffer_memory);
+                     staging_buffer, m_vertices.data());
 
-        void* data;
-        vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data);
-        SHERPHY_MEMCPY(data, m_vertices.data(), static_cast<size_t>(buffer_size));
-        vkUnmapMemory(m_device, staging_buffer_memory);
-
-        createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                     m_vertex_buffer, m_vertex_buffer_memory);
+                     m_vertex_buffer);
 
         copyBufferImmediate(staging_buffer, m_vertex_buffer, buffer_size);
 
-        vkDestroyBuffer(m_device, staging_buffer, nullptr);
-        vkFreeMemory(m_device, staging_buffer_memory, nullptr);
+        staging_buffer.destroy();
     }
 
     void VulkanRHI::createIndexBuffer() 
     {
         VkDeviceSize buffer_size = sizeof(m_indices[0]) * m_indices.size();
 
-        VkBuffer staging_buffer;
-        VkDeviceMemory staging_buffer_memory;
-        createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+        VulkanBuffer staging_buffer;
+        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, m_indices.data());
 
-        void* data;
-        vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data);
-        SHERPHY_MEMCPY(data, m_indices.data(), (size_t)buffer_size);
-        vkUnmapMemory(m_device, staging_buffer_memory);
-
-        createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_index_buffer, m_index_buffer_memory);
+        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_index_buffer);
 
         copyBufferImmediate(staging_buffer, m_index_buffer, buffer_size);
 
-        vkDestroyBuffer(m_device, staging_buffer, nullptr);
-        vkFreeMemory(m_device, staging_buffer_memory, nullptr);
+        staging_buffer.destroy();
     }
 
-    void VulkanRHI::copyBufferImmediate(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size)
+    void VulkanRHI::createTransformBuffer() 
     {
-        VkCommandBuffer command_buffer = beginSingleTimeCommands();
+        SHERPHY_ASSERT(m_device.createBuffer(sizeof(VkTransformMatrixKHR),
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            m_transform_buffer, &m_transform_matrix), VK_SUCCESS, "");
+    }
+
+    void VulkanRHI::copyBufferImmediate(VulkanBuffer src_buffer, VulkanBuffer dst_buffer, VkDeviceSize size)
+    {
+        VkCommandBuffer command_buffer = m_device.beginSingleTimeCommands();
         VkBufferCopy copyRegion{};
-        copyRegion.srcOffset = 0; // Optional
-        copyRegion.dstOffset = 0; // Optional
         copyRegion.size = size;
-        vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copyRegion);
-        endSingleTimeCommands(command_buffer);
-    }
-
-    uint32_t VulkanRHI::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties)
-    {
-        for (uint32_t i = 0; i < m_physical_device_memory_properties.memoryTypeCount; i++) {
-            if (type_filter & (1 << i) && (m_physical_device_memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-                return i;
-            }
-        }
-
-        SHERPHY_EXCEPTION_IF_FALSE(false, "failed to find suitable memory type!");
+        vkCmdCopyBuffer(command_buffer, src_buffer.buffer, dst_buffer.buffer, 1, &copyRegion);
+        m_device.endSingleTimeCommands(command_buffer, m_graphics_queue);
     }
 
     void VulkanRHI::createRenderPass() 
     {
         createRenderPassNormal();
         return;
-    }
-
-    void VulkanRHI::createCommandBuffer() 
-    {
-        m_command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
-        VkCommandBufferAllocateInfo alloc_info{};
-        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        alloc_info.commandPool = m_command_pool;
-        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandBufferCount = static_cast<uint32_t>(m_command_buffers.size());
-
-        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateCommandBuffers(m_device, &alloc_info, m_command_buffers.data()) == VK_SUCCESS, "failed to allocate command buffers!");
-    }
-
-
-    VkCommandBuffer VulkanRHI::beginSingleTimeCommands() 
-    {
-        VkCommandBufferAllocateInfo alloc_info{};
-        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandPool = m_command_pool;
-        alloc_info.commandBufferCount = 1;
-
-        VkCommandBuffer command_buffer;
-        vkAllocateCommandBuffers(m_device, &alloc_info, &command_buffer);
-
-        VkCommandBufferBeginInfo begin_info{};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(command_buffer, &begin_info);
-
-        return command_buffer;
-    }
-
-    void VulkanRHI::endSingleTimeCommands(VkCommandBuffer command_buffer) 
-    {
-        vkEndCommandBuffer(command_buffer);
-
-        VkSubmitInfo submit_info{};
-        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &command_buffer;
-
-        vkQueueSubmit(m_graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-        vkQueueWaitIdle(m_graphics_queue);
-
-        vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
     }
 
     void VulkanRHI::recordCommandBuffer(VkCommandBuffer command_buffer, uint32_t image_index) {
@@ -648,8 +571,8 @@ namespace Sherphy{
 
         VkDeviceSize offsets[] = { 0 };
         //vkCmdBindVertexBuffers(command_buffer, 0, static_cast<uint32_t>(m_vertex_buffers.size()), m_vertex_buffers.data(), offsets);
-        vkCmdBindVertexBuffers(command_buffer, 0, 1, &m_vertex_buffer, offsets);
-        vkCmdBindIndexBuffer(command_buffer, m_index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindVertexBuffers(command_buffer, 0, 1, &m_vertex_buffer.buffer, offsets);
+        vkCmdBindIndexBuffer(command_buffer, m_index_buffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
             m_pipeline_layout, 0, 1, &m_descriptor_sets[m_current_frame], 0, nullptr);
@@ -658,17 +581,6 @@ namespace Sherphy{
         //vkCmdDraw(command_buffer, static_cast<uint32_t>(m_vertices.size()), 1, 0, 0);//TODO abstract command
         vkCmdEndRenderPass(command_buffer);
         SHERPHY_EXCEPTION_IF_FALSE(vkEndCommandBuffer(command_buffer) == VK_SUCCESS, "failed to record command buffer!");
-    }
-
-    void VulkanRHI::createCommandPool() 
-    {
-        VkCommandPoolCreateInfo pool_info{};
-        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        pool_info.queueFamilyIndex = m_queue_family_indices.graphics_family.value();
-
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateCommandPool(m_device, &pool_info, nullptr, &m_command_pool) == VK_SUCCESS, "failed to create command pool!");
-
     }
 
     void VulkanRHI::createDepthResources()
@@ -696,7 +608,7 @@ namespace Sherphy{
     }
 
     VkFormat VulkanRHI::findDepthFormat() {
-        return findSupportedFormat(m_physical_devices[m_pick_physical_device_id],
+        return findSupportedFormat(m_device.m_physical_device,
             { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
             VK_IMAGE_TILING_OPTIMAL,
             VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
@@ -711,14 +623,13 @@ namespace Sherphy{
 
         SHERPHY_EXCEPTION_IF_FALSE(pixels, "failed to load texture image!");
 
-        VkBuffer staging_buffer;
-        VkDeviceMemory staging_buffer_memory;
-        createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+        VulkanBuffer staging_buffer;
+        m_device.createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer);
 
         void* data;
-        vkMapMemory(m_device, staging_buffer_memory, 0, image_size, 0, &data);
+        vkMapMemory(m_device.m_logical_device, staging_buffer.memory, 0, image_size, 0, &data);
         SHERPHY_MEMCPY(data, pixels, static_cast<size_t>(image_size));
-        vkUnmapMemory(m_device, staging_buffer_memory);
+        vkUnmapMemory(m_device.m_logical_device, staging_buffer.memory);
 
         g_miracle_global_context.m_file_system->releaseImageAsset(pixels);
 
@@ -726,11 +637,10 @@ namespace Sherphy{
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_texture_image, m_texture_image_memory);
 
         transitionImageLayout(m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-            copyBufferToImage(staging_buffer, m_texture_image, static_cast<uint32_t>(tex_width), static_cast<uint32_t>(tex_height));
+            copyBufferToImage(staging_buffer.buffer, m_texture_image, static_cast<uint32_t>(tex_width), static_cast<uint32_t>(tex_height));
         transitionImageLayout(m_texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-        vkDestroyBuffer(m_device, staging_buffer, nullptr);
-        vkFreeMemory(m_device, staging_buffer_memory, nullptr);
+        staging_buffer.destroy();
     }
 
 
@@ -748,7 +658,7 @@ namespace Sherphy{
         view_info.subresourceRange.layerCount = 1;
 
         VkImageView image_view;
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateImageView(m_device, &view_info, nullptr, &image_view) == VK_SUCCESS, "failed to create texture image view!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateImageView(m_device.m_logical_device, &view_info, nullptr, &image_view) == VK_SUCCESS, "failed to create texture image view!");
 
         return image_view;
     }
@@ -768,18 +678,18 @@ namespace Sherphy{
         sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler_info.anisotropyEnable = VK_TRUE;
-        sampler_info.maxAnisotropy = m_physical_device_properties.limits.maxSamplerAnisotropy;
+        sampler_info.maxAnisotropy = m_device.m_physical_device_properties.limits.maxSamplerAnisotropy;
         sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
         sampler_info.unnormalizedCoordinates = VK_FALSE;
         sampler_info.compareEnable = VK_FALSE;
         sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
         sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateSampler(m_device, &sampler_info, nullptr, &m_sampler) == VK_SUCCESS, "failed to create texture sampler!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateSampler(m_device.m_logical_device, &sampler_info, nullptr, &m_sampler) == VK_SUCCESS, "failed to create texture sampler!");
     }
 
     void VulkanRHI::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
-        VkCommandBuffer command_buffer = beginSingleTimeCommands();
+        VkCommandBuffer command_buffer = m_device.beginSingleTimeCommands();
 
         VkBufferImageCopy region{};
         region.bufferOffset = 0;
@@ -798,7 +708,7 @@ namespace Sherphy{
 
         vkCmdCopyBufferToImage(command_buffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-        endSingleTimeCommands(command_buffer);
+        m_device.endSingleTimeCommands(command_buffer, m_graphics_queue);
     }
 
     void VulkanRHI::createImage(uint32_t width, 
@@ -825,19 +735,19 @@ namespace Sherphy{
         image_info.samples = VK_SAMPLE_COUNT_1_BIT;
         image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateImage(m_device, &image_info, nullptr, &image) == VK_SUCCESS, "failed to create image!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateImage(m_device.m_logical_device, &image_info, nullptr, &image) == VK_SUCCESS, "failed to create image!");
 
         VkMemoryRequirements mem_requirements;
-        vkGetImageMemoryRequirements(m_device, image, &mem_requirements);
+        vkGetImageMemoryRequirements(m_device.m_logical_device, image, &mem_requirements);
 
         VkMemoryAllocateInfo alloc_info{};
         alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         alloc_info.allocationSize = mem_requirements.size;
-        alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
+        alloc_info.memoryTypeIndex = m_device.findMemoryType(mem_requirements.memoryTypeBits, properties);
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateMemory(m_device, &alloc_info, nullptr, &image_memory) == VK_SUCCESS, "failed to allocate image memory!")
+        SHERPHY_EXCEPTION_IF_FALSE(vkAllocateMemory(m_device.m_logical_device, &alloc_info, nullptr, &image_memory) == VK_SUCCESS, "failed to allocate image memory!")
 
-        vkBindImageMemory(m_device, image, image_memory, 0);
+        vkBindImageMemory(m_device.m_logical_device, image, image_memory, 0);
     }
 
 
@@ -846,7 +756,7 @@ namespace Sherphy{
                                           VkImageLayout old_layout, 
                                           VkImageLayout new_layout)
     {
-        VkCommandBuffer command_buffer = beginSingleTimeCommands();
+        VkCommandBuffer command_buffer = m_device.beginSingleTimeCommands();
 
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -891,7 +801,7 @@ namespace Sherphy{
             1, &barrier
         );
 
-        endSingleTimeCommands(command_buffer);
+        m_device.endSingleTimeCommands(command_buffer, m_graphics_queue);
     }
 
     void VulkanRHI::createFrameBuffers() 
@@ -912,7 +822,7 @@ namespace Sherphy{
             frame_buffer_info.width = m_extent.width;
             frame_buffer_info.height = m_extent.height;
             frame_buffer_info.layers = 1;
-            SHERPHY_EXCEPTION_IF_FALSE(vkCreateFramebuffer(m_device, &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]) == VK_SUCCESS, "failed to create framebuffer!");
+            SHERPHY_EXCEPTION_IF_FALSE(vkCreateFramebuffer(m_device.m_logical_device, &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]) == VK_SUCCESS, "failed to create framebuffer!");
         }
     }
 
@@ -943,52 +853,7 @@ namespace Sherphy{
                 break;
             }
         }
-    }
-
-    void VulkanRHI::createLogicalDevice(VkPhysicalDevice device, VkPhysicalDeviceFeatures enabled_features, const std::vector<const char*>& enabled_extensions, const void* pNext_chain, bool use_swap_chain)
-    {
-        m_queue_family_indices = findQueueFamilies(device);
-
-        std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
-        std::set<uint32_t> unique_queue_families = { m_queue_family_indices.graphics_family.value(), m_queue_family_indices.present_family.value()};
-
-        for (uint32_t queue_family : unique_queue_families) 
-        {
-            VkDeviceQueueCreateInfo queue_create_info{};
-            queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queue_create_info.queueFamilyIndex = m_queue_family_indices.graphics_family.value();
-            queue_create_info.queueCount = 1;
-            queue_create_info.pQueuePriorities = &m_queue_prioity;
-            queue_create_infos.push_back(queue_create_info);
-        }
-
-        std::vector<const char*> device_extensions(enabled_extensions);
-        if (use_swap_chain)
-        {
-            device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-        }
-
-        enabled_features.samplerAnisotropy = VK_TRUE;
-
-        VkDeviceCreateInfo create_info{};
-        create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
-        create_info.pQueueCreateInfos = queue_create_infos.data();
-        create_info.pEnabledFeatures = &enabled_features;
-        create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
-        create_info.ppEnabledExtensionNames = device_extensions.data();
-        if (m_enable_validation_layer) 
-        {
-            create_info.enabledLayerCount = static_cast<uint32_t>(m_validation_layers.size());
-            create_info.ppEnabledLayerNames = m_validation_layers.data();
-        }
-        else 
-        {
-            create_info.enabledLayerCount = 0;
-        }
-        SHERPHY_EXCEPTION_IF_FALSE((vkCreateDevice(device, &create_info, nullptr, &m_device) == VK_SUCCESS), "faild to create logical device")
-        vkGetDeviceQueue(m_device, m_queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
-        vkGetDeviceQueue(m_device, m_queue_family_indices.present_family.value(), 0, &m_present_queue);
+        m_device.m_physical_device = m_physical_devices[m_pick_physical_device_id];
     }
 
     void VulkanRHI::createSwapChain(VkPhysicalDevice device)
@@ -1016,9 +881,9 @@ namespace Sherphy{
         create_info.imageArrayLayers = 1;
         create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        uint32_t queueFamilyIndices[] = { m_queue_family_indices.graphics_family.value(), m_queue_family_indices.present_family.value() };
+        uint32_t queueFamilyIndices[] = { m_device.m_queue_family_indices.graphics_family.value(), m_device.m_queue_family_indices.present_family.value() };
 
-        if (m_queue_family_indices.graphics_family != m_queue_family_indices.present_family) {
+        if (m_device.m_queue_family_indices.graphics_family != m_device.m_queue_family_indices.present_family) {
             create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
             create_info.queueFamilyIndexCount = 2;
             create_info.pQueueFamilyIndices = queueFamilyIndices;
@@ -1032,11 +897,11 @@ namespace Sherphy{
         create_info.presentMode = present_mode;
         create_info.clipped = VK_TRUE;
         
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateSwapchainKHR(m_device, &create_info, nullptr, &m_swap_chain) == VK_SUCCESS, "failed to create swap chain!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateSwapchainKHR(m_device.m_logical_device, &create_info, nullptr, &m_swap_chain) == VK_SUCCESS, "failed to create swap chain!");
 
-        vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, nullptr);
+        vkGetSwapchainImagesKHR(m_device.m_logical_device, m_swap_chain, &image_count, nullptr);
         m_swap_chain_images.resize(image_count);
-        vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, m_swap_chain_images.data());
+        vkGetSwapchainImagesKHR(m_device.m_logical_device, m_swap_chain, &image_count, m_swap_chain_images.data());
 
         m_swap_chain_image_format = surface_format.format;
         m_present_mode = present_mode;
@@ -1063,7 +928,7 @@ namespace Sherphy{
         create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
         VkShaderModule shader_module;
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateShaderModule(m_device, &create_info, nullptr, &shader_module) == VK_SUCCESS, "failed to create shader module!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateShaderModule(m_device.m_logical_device, &create_info, nullptr, &shader_module) == VK_SUCCESS, "failed to create shader module!");
 
         return shader_module;
     }
@@ -1125,11 +990,14 @@ namespace Sherphy{
         render_pass_info.pDependencies = &dependency;
         render_pass_info.pSubpasses = &subpass;
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateRenderPass(m_device, &render_pass_info, nullptr, &m_render_pass) == VK_SUCCESS, "failed to create render pass!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateRenderPass(m_device.m_logical_device, &render_pass_info, nullptr, &m_render_pass) == VK_SUCCESS, "failed to create render pass!");
         return;
     }
     
-    void VulkanRHI::createGraphicsPipeline(PipeLineType type, std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
+    void VulkanRHI::createGraphicsPipeline(PipeLineType type, 
+                                           const std::vector<char>& vertex_shader, 
+                                           const std::vector<char>& fragment_shader, 
+                                           const std::vector<char>& closest_hit_shader)
     {
         switch (type)
         {
@@ -1143,7 +1011,7 @@ namespace Sherphy{
             createGraphicsPipelineUniform(vertex_shader, fragment_shader);
             break;
         case PipeLineType::RayTracing:
-            //createGraphicsPipelineRayTracing(vertex_shader, fragment_shader, closest_hit_shader);
+            createGraphicsPipelineRayTracing(vertex_shader, fragment_shader, closest_hit_shader);
             break;
         default:
             createGraphicsPipelineNormal(vertex_shader, fragment_shader);
@@ -1151,7 +1019,7 @@ namespace Sherphy{
         }
     }
     
-    VkPipelineShaderStageCreateInfo VulkanRHI::loadShader(std::vector<char>& shader, VkShaderStageFlagBits stage)
+    VkPipelineShaderStageCreateInfo VulkanRHI::loadShader(const std::vector<char>& shader, VkShaderStageFlagBits stage)
     {
         VkPipelineShaderStageCreateInfo shader_stage_info{};
         shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1166,78 +1034,296 @@ namespace Sherphy{
     {
         for (auto shader_modules : m_managed_shader_modules) 
         {
-            vkDestroyShaderModule(m_device, shader_modules, nullptr);
+            vkDestroyShaderModule(m_device.m_logical_device, shader_modules, nullptr);
         }
         m_managed_shader_modules.clear();
         return;
     }
 
-    void VulkanRHI::createGraphicsPipelineRayTracing(std::vector<char>& raygen_shader,
-                                                     std::vector<char>& raymiss_shader,
-                                                     std::vector<char>& closest_hit_shader)
+    void VulkanRHI::createTopLevelAccelerationStructure() 
     {
+        VkAccelerationStructureInstanceKHR instance{};
+        instance.transform = m_transform_matrix;
+        instance.instanceCustomIndex = 0;
+        instance.mask = 0xFF;
+        instance.instanceShaderBindingTableRecordOffset = 0;
+        instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        instance.accelerationStructureReference = m_bottom_level_AS.device_address;
+
+        // Buffer for instance data
+        VulkanBuffer instances_buffer;
+        SHERPHY_ASSERT(m_device.createBuffer(sizeof(VkAccelerationStructureInstanceKHR),
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            instances_buffer), VK_SUCCESS, "");
+
+        VkDeviceOrHostAddressConstKHR instance_data_device_address{};
+        instance_data_device_address.deviceAddress = m_device.getBufferDeviceAddress(instances_buffer);
+
+        VkAccelerationStructureGeometryKHR acceleration_structure_geometry{};
+        acceleration_structure_geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        acceleration_structure_geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        acceleration_structure_geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        acceleration_structure_geometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+        acceleration_structure_geometry.geometry.instances.arrayOfPointers = VK_FALSE;
+        acceleration_structure_geometry.geometry.instances.data = instance_data_device_address;
+
+        // Get size info
+        /*
+        The pSrcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored. Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command, except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData will be examined to check if it is NULL.*
+        */
+        VkAccelerationStructureBuildGeometryInfoKHR acceleration_structure_build_geometry_info{};
+        acceleration_structure_build_geometry_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        acceleration_structure_build_geometry_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        acceleration_structure_build_geometry_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        acceleration_structure_build_geometry_info.geometryCount = 1;
+        acceleration_structure_build_geometry_info.pGeometries = &acceleration_structure_geometry;
+
+        uint32_t primitive_count = 1;
+
+        VkAccelerationStructureBuildSizesInfoKHR acceleration_structure_build_sizes_info{};
+        acceleration_structure_build_sizes_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+        vkGetAccelerationStructureBuildSizesKHR(
+            m_device.m_logical_device,
+            VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+            &acceleration_structure_build_geometry_info,
+            &primitive_count,
+            &acceleration_structure_build_sizes_info);
+
+        createAccelerationStructureBuffer(m_top_level_AS, acceleration_structure_build_sizes_info);
+
+        VkAccelerationStructureCreateInfoKHR acceleration_structure_create_info{};
+        acceleration_structure_create_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+        acceleration_structure_create_info.buffer = m_top_level_AS.buffer;
+        acceleration_structure_create_info.size = acceleration_structure_build_sizes_info.accelerationStructureSize;
+        acceleration_structure_create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        vkCreateAccelerationStructureKHR(m_device.m_logical_device, &acceleration_structure_create_info, nullptr, &m_top_level_AS.handle);
+
+        // Create a small scratch buffer used during build of the top level acceleration structure
+        VulkanBuffer scratch_buffer;
+        m_device.createBuffer(acceleration_structure_build_sizes_info.buildScratchSize,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch_buffer);
+
+        VkAccelerationStructureBuildGeometryInfoKHR acceleration_build_geometry_info{};
+        acceleration_build_geometry_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        acceleration_build_geometry_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        acceleration_build_geometry_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        acceleration_build_geometry_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        acceleration_build_geometry_info.dstAccelerationStructure = m_top_level_AS.handle;
+        acceleration_build_geometry_info.geometryCount = 1;
+        acceleration_build_geometry_info.pGeometries = &acceleration_structure_geometry;
+        acceleration_build_geometry_info.scratchData.deviceAddress = m_device.getBufferDeviceAddress(scratch_buffer);
+
+        VkAccelerationStructureBuildRangeInfoKHR acceleration_structure_build_range_info{};
+        acceleration_structure_build_range_info.primitiveCount = 1;
+        acceleration_structure_build_range_info.primitiveOffset = 0;
+        acceleration_structure_build_range_info.firstVertex = 0;
+        acceleration_structure_build_range_info.transformOffset = 0;
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR*> acceleration_build_structure_range_infos = { &acceleration_structure_build_range_info };
+
+        // Build the acceleration structure on the device via a one-time command buffer submission
+        // Some implementations may support acceleration structure building on the host (VkPhysicalDeviceAccelerationStructureFeaturesKHR->accelerationStructureHostCommands), but we prefer device builds
+        VkCommandBuffer command_buffer = m_device.createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        vkCmdBuildAccelerationStructuresKHR(
+            command_buffer,
+            1,
+            &acceleration_build_geometry_info,
+            acceleration_build_structure_range_infos.data());
+        m_device.endSingleTimeCommands(command_buffer, m_graphics_queue);
+
+        VkAccelerationStructureDeviceAddressInfoKHR acceleration_device_address_info{};
+        acceleration_device_address_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        acceleration_device_address_info.accelerationStructure = m_top_level_AS.handle;
+        m_top_level_AS.device_address = vkGetAccelerationStructureDeviceAddressKHR(m_device.m_logical_device, &acceleration_device_address_info);
+
+        scratch_buffer.destroy();
+        instances_buffer.destroy();
+    }
+
+    void VulkanRHI::createAccelerationStructureBuffer(AccelerationStructure& acceleration_structure, VkAccelerationStructureBuildSizesInfoKHR build_size_info)
+    {
+        VkBufferCreateInfo buffer_create_info{};
+        buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buffer_create_info.size = build_size_info.accelerationStructureSize;
+        buffer_create_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        SHERPHY_ASSERT(vkCreateBuffer(m_device.m_logical_device, &buffer_create_info, nullptr, &acceleration_structure.buffer), VK_SUCCESS, "AccelerationStructureBuffer Faild");
+        VkMemoryRequirements memory_requirements{};
+        vkGetBufferMemoryRequirements(m_device.m_logical_device, acceleration_structure.buffer, &memory_requirements);
+        VkMemoryAllocateFlagsInfo memory_allocate_flags_info{};
+        memory_allocate_flags_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+        memory_allocate_flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+        VkMemoryAllocateInfo memory_allocate_info{};
+        memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memory_allocate_info.pNext = &memory_allocate_flags_info;
+        memory_allocate_info.allocationSize = memory_requirements.size;
+        memory_allocate_info.memoryTypeIndex = m_device.findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        SHERPHY_ASSERT(vkAllocateMemory(m_device.m_logical_device, &memory_allocate_info, nullptr, &acceleration_structure.memory), VK_SUCCESS, "AccelerationStructureBuffer AllocateMemory");
+        SHERPHY_ASSERT(vkBindBufferMemory(m_device.m_logical_device, acceleration_structure.buffer, acceleration_structure.memory, 0), VK_SUCCESS, "AccelerationStructureBuffer BindBufferMemory");
+    }
+
+    void VulkanRHI::createBottomLevelAccelerationStructure() 
+    {
+        VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
+        VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
+        VkDeviceOrHostAddressConstKHR transformBufferDeviceAddress{};
+
+        vertexBufferDeviceAddress.deviceAddress = m_device.getBufferDeviceAddress(m_vertex_buffer);
+        indexBufferDeviceAddress.deviceAddress = m_device.getBufferDeviceAddress(m_index_buffer);
+        transformBufferDeviceAddress.deviceAddress = m_device.getBufferDeviceAddress(m_transform_buffer);
+        // Build
+        VkAccelerationStructureGeometryKHR acceleration_structure_geometry{};
+        acceleration_structure_geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+        acceleration_structure_geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        acceleration_structure_geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+        acceleration_structure_geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+        acceleration_structure_geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+        acceleration_structure_geometry.geometry.triangles.vertexData = vertexBufferDeviceAddress;
+        acceleration_structure_geometry.geometry.triangles.maxVertex = 3;
+        acceleration_structure_geometry.geometry.triangles.vertexStride = sizeof(Vertex);
+        acceleration_structure_geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+        acceleration_structure_geometry.geometry.triangles.indexData = indexBufferDeviceAddress;
+        acceleration_structure_geometry.geometry.triangles.transformData.deviceAddress = 0;
+        acceleration_structure_geometry.geometry.triangles.transformData.hostAddress = nullptr;
+        acceleration_structure_geometry.geometry.triangles.transformData = transformBufferDeviceAddress;
+
+        // Get size info
+        VkAccelerationStructureBuildGeometryInfoKHR acceleration_structure_build_geometry_info{};
+        acceleration_structure_build_geometry_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        acceleration_structure_build_geometry_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        acceleration_structure_build_geometry_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        acceleration_structure_build_geometry_info.geometryCount = 1;
+        acceleration_structure_build_geometry_info.pGeometries = &acceleration_structure_geometry;
+
+        const uint32_t num_triangles = 1;// TODO
+        VkAccelerationStructureBuildSizesInfoKHR acceleration_structure_build_sizes_info{};
+        acceleration_structure_build_sizes_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+        vkGetAccelerationStructureBuildSizesKHR(
+            m_device.m_logical_device,
+            VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+            &acceleration_structure_build_geometry_info,
+            &num_triangles,
+            &acceleration_structure_build_sizes_info);
+
+        createAccelerationStructureBuffer(m_bottom_level_AS, acceleration_structure_build_sizes_info);
+
+        VkAccelerationStructureCreateInfoKHR acceleration_structure_create_info{};
+        acceleration_structure_create_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+        acceleration_structure_create_info.buffer = m_bottom_level_AS.buffer;
+        acceleration_structure_create_info.size = acceleration_structure_build_sizes_info.accelerationStructureSize;
+        acceleration_structure_create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        vkCreateAccelerationStructureKHR(m_device.m_logical_device, &acceleration_structure_create_info, nullptr, &m_bottom_level_AS.handle);
+
+        // Create a small scratch buffer used during build of the bottom level acceleration structure
+        VulkanBuffer scratch_buffer;
+        m_device.createBuffer(acceleration_structure_build_sizes_info.buildScratchSize,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch_buffer);
+
+        VkAccelerationStructureBuildGeometryInfoKHR acceleration_build_geometry_info{};
+        acceleration_build_geometry_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        acceleration_build_geometry_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        acceleration_build_geometry_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        acceleration_build_geometry_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        acceleration_build_geometry_info.dstAccelerationStructure = m_bottom_level_AS.handle;
+        acceleration_build_geometry_info.geometryCount = 1;
+        acceleration_build_geometry_info.pGeometries = &acceleration_structure_geometry;
+        acceleration_build_geometry_info.scratchData.deviceAddress = m_device.getBufferDeviceAddress(scratch_buffer);
+
+        VkAccelerationStructureBuildRangeInfoKHR acceleration_structure_build_range_info{};
+        acceleration_structure_build_range_info.primitiveCount = num_triangles;
+        acceleration_structure_build_range_info.primitiveOffset = 0;
+        acceleration_structure_build_range_info.firstVertex = 0;
+        acceleration_structure_build_range_info.transformOffset = 0;
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR*> acceleration_build_structure_range_infos = { &acceleration_structure_build_range_info };
+
+
+        VkCommandBuffer command_buffer = m_device.createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        vkCmdBuildAccelerationStructuresKHR(
+            command_buffer,
+            1,
+            &acceleration_build_geometry_info,
+            acceleration_build_structure_range_infos.data());
+        m_device.endSingleTimeCommands(command_buffer, m_graphics_queue);
+
+        VkAccelerationStructureDeviceAddressInfoKHR acceleration_device_address_info{};
+        acceleration_device_address_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        acceleration_device_address_info.accelerationStructure = m_bottom_level_AS.handle;
+        m_bottom_level_AS.device_address = vkGetAccelerationStructureDeviceAddressKHR(m_device.m_logical_device, &acceleration_device_address_info);
+
+        scratch_buffer.destroy();
+    }
+
+    void VulkanRHI::createGraphicsPipelineRayTracing(const std::vector<char>& raygen_shader,
+                                                     const std::vector<char>& raymiss_shader,
+                                                     const std::vector<char>& closest_hit_shader)
+    {
+        createBottomLevelAccelerationStructure();
+        createTopLevelAccelerationStructure();
+
         VkPipelineLayoutCreateInfo pipeline_layout_create_info{};
         pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipeline_layout_create_info.setLayoutCount = 1;
         pipeline_layout_create_info.pSetLayouts = &m_descriptor_set_layout;
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device, &pipeline_layout_create_info, nullptr, &m_pipeline_layout), "");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device.m_logical_device, &pipeline_layout_create_info, nullptr, &m_pipeline_layout), "");
 
-        std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-        std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups;
+        std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
+        std::vector<VkRayTracingShaderGroupCreateInfoKHR> shader_groups;
 
         // Ray generation group
         {
-            shaderStages.push_back(loadShader(raygen_shader, VK_SHADER_STAGE_RAYGEN_BIT_KHR));
-            VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
-            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-            shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-            shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-            shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-            shaderGroups.push_back(shaderGroup);
+            shader_stages.push_back(loadShader(raygen_shader, VK_SHADER_STAGE_RAYGEN_BIT_KHR));
+            VkRayTracingShaderGroupCreateInfoKHR shader_group{};
+            shader_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shader_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+            shader_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+            shader_group.closestHitShader = VK_SHADER_UNUSED_KHR;
+            shader_group.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shader_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shader_groups.push_back(shader_group);
         }
 
         // Miss group
         {
-            shaderStages.push_back(loadShader(raymiss_shader, VK_SHADER_STAGE_MISS_BIT_KHR));
-            VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
-            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-            shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-            shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-            shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-            shaderGroups.push_back(shaderGroup);
+            shader_stages.push_back(loadShader(raymiss_shader, VK_SHADER_STAGE_MISS_BIT_KHR));
+            VkRayTracingShaderGroupCreateInfoKHR shader_group{};
+            shader_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shader_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+            shader_group.generalShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+            shader_group.closestHitShader = VK_SHADER_UNUSED_KHR;
+            shader_group.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shader_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shader_groups.push_back(shader_group);
         }
 
         // Closest hit group
         {
-            shaderStages.push_back(loadShader(closest_hit_shader, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
-            VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
-            shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-            shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-            shaderGroup.generalShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.closestHitShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-            shaderGroups.push_back(shaderGroup);
+            shader_stages.push_back(loadShader(closest_hit_shader, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
+            VkRayTracingShaderGroupCreateInfoKHR shader_group{};
+            shader_group.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+            shader_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+            shader_group.generalShader = VK_SHADER_UNUSED_KHR;
+            shader_group.closestHitShader = static_cast<uint32_t>(shader_stages.size()) - 1;
+            shader_group.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shader_group.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shader_groups.push_back(shader_group);
         }
 
-        VkRayTracingPipelineCreateInfoKHR rayTracingPipelineCI{};
-        rayTracingPipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
-        rayTracingPipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
-        rayTracingPipelineCI.pStages = shaderStages.data();
-        rayTracingPipelineCI.groupCount = static_cast<uint32_t>(shaderGroups.size());
-        rayTracingPipelineCI.pGroups = shaderGroups.data();
-        rayTracingPipelineCI.maxPipelineRayRecursionDepth = 1;
-        rayTracingPipelineCI.layout = m_pipeline_layout;
+        VkRayTracingPipelineCreateInfoKHR rayTracing_pipeline_CI{};
+        rayTracing_pipeline_CI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
+        rayTracing_pipeline_CI.stageCount = static_cast<uint32_t>(shader_stages.size());
+        rayTracing_pipeline_CI.pStages = shader_stages.data();
+        rayTracing_pipeline_CI.groupCount = static_cast<uint32_t>(shader_groups.size());
+        rayTracing_pipeline_CI.pGroups = shader_groups.data();
+        rayTracing_pipeline_CI.maxPipelineRayRecursionDepth = 1;
+        rayTracing_pipeline_CI.layout = m_pipeline_layout;
 
-        //SHERPHY_EXCEPTION_IF_FALSE(vkCreateRayTracingPipelinesKHR(m_device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "create RayTracingPipeline Faild");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateRayTracingPipelinesKHR(m_device.m_logical_device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracing_pipeline_CI, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "create RayTracingPipeline Faild");
     }
 
     //TODO Uniform Type
-    void VulkanRHI::createGraphicsPipelineUniform(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
+    void VulkanRHI::createGraphicsPipelineUniform(const std::vector<char>& vertex_shader,
+                                                  const std::vector<char>& fragment_shader)
     {
         auto uniform_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/SimpleTestTriangle_uniform.spv");
 
@@ -1345,7 +1431,7 @@ namespace Sherphy{
         pipeline_layout_info.pushConstantRangeCount = 0; // Optional
         pipeline_layout_info.pPushConstantRanges = nullptr; // Optional
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device, &pipeline_layout_info, nullptr, &m_pipeline_layout) == VK_SUCCESS, "");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device.m_logical_device, &pipeline_layout_info, nullptr, &m_pipeline_layout) == VK_SUCCESS, "");
 
         VkGraphicsPipelineCreateInfo pipeline_info{};
         pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1365,13 +1451,14 @@ namespace Sherphy{
         pipeline_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
         pipeline_info.basePipelineIndex = -1; // Optional
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "failed to create graphics pipeline!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateGraphicsPipelines(m_device.m_logical_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "failed to create graphics pipeline!");
 
-        vkDestroyShaderModule(m_device, uniform_shader_module, nullptr);
+        vkDestroyShaderModule(m_device.m_logical_device, uniform_shader_module, nullptr);
         return;
     }
 
-    void VulkanRHI::createGraphicsPipelineTriangleTest(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
+    void VulkanRHI::createGraphicsPipelineTriangleTest(const std::vector<char>& vertex_shader,
+                                                       const std::vector<char>& fragment_shader)
     {
         VkShaderModule vert_shader_module = createShaderModule(vertex_shader);
         VkShaderModule frag_shader_module = createShaderModule(fragment_shader);
@@ -1478,7 +1565,7 @@ namespace Sherphy{
         pipeline_layout_info.pushConstantRangeCount = 0; // Optional
         pipeline_layout_info.pPushConstantRanges = nullptr; // Optional
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device, &pipeline_layout_info, nullptr, &m_pipeline_layout) == VK_SUCCESS, "");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device.m_logical_device, &pipeline_layout_info, nullptr, &m_pipeline_layout) == VK_SUCCESS, "");
 
         VkGraphicsPipelineCreateInfo pipeline_info{};
         pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1498,14 +1585,15 @@ namespace Sherphy{
         pipeline_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
         pipeline_info.basePipelineIndex = -1; // Optional
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "failed to create graphics pipeline!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateGraphicsPipelines(m_device.m_logical_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "failed to create graphics pipeline!");
 
-        vkDestroyShaderModule(m_device, vert_shader_module, nullptr);
-        vkDestroyShaderModule(m_device, frag_shader_module, nullptr);
+        vkDestroyShaderModule(m_device.m_logical_device, vert_shader_module, nullptr);
+        vkDestroyShaderModule(m_device.m_logical_device, frag_shader_module, nullptr);
         return;
     }
 
-    void VulkanRHI::createGraphicsPipelineNormal(std::vector<char>& vertex_shader, std::vector<char>& fragment_shader)
+    void VulkanRHI::createGraphicsPipelineNormal(const std::vector<char>& vertex_shader,
+                                                 const std::vector<char>& fragment_shader)
     {
         VkShaderModule vert_shader_module = createShaderModule(vertex_shader);
         VkShaderModule frag_shader_module = createShaderModule(fragment_shader);
@@ -1622,7 +1710,7 @@ namespace Sherphy{
         pipeline_layout_info.pushConstantRangeCount = 0; // Optional
         pipeline_layout_info.pPushConstantRanges = nullptr; // Optional
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device, &pipeline_layout_info, nullptr, &m_pipeline_layout) == VK_SUCCESS, "");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreatePipelineLayout(m_device.m_logical_device, &pipeline_layout_info, nullptr, &m_pipeline_layout) == VK_SUCCESS, "");
 
         VkGraphicsPipelineCreateInfo pipeline_info{};
         pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1642,17 +1730,17 @@ namespace Sherphy{
         pipeline_info.basePipelineHandle = VK_NULL_HANDLE; // Optional
         pipeline_info.basePipelineIndex = -1; // Optional
 
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "failed to create graphics pipeline!");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateGraphicsPipelines(m_device.m_logical_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline) == VK_SUCCESS, "failed to create graphics pipeline!");
 
-        vkDestroyShaderModule(m_device, vert_shader_module, nullptr);
-        vkDestroyShaderModule(m_device, frag_shader_module, nullptr);
+        vkDestroyShaderModule(m_device.m_logical_device, vert_shader_module, nullptr);
+        vkDestroyShaderModule(m_device.m_logical_device, frag_shader_module, nullptr);
         return;
     }
 
     // TODO test if device suitable
     bool VulkanRHI::isDeviceSuitable(VkPhysicalDevice& device) 
     {
-        QueueFamilyIndices indices = findQueueFamilies(device);
+        QueueFamilyIndices indices = m_device.findQueueFamilies(device, m_surface);
 
         bool extension_supported = checkDeviceExtensionSupport(device);
 
@@ -1757,38 +1845,6 @@ namespace Sherphy{
         return required_extensions.empty();
     }
 
-    QueueFamilyIndices VulkanRHI::findQueueFamilies(VkPhysicalDevice& device) 
-    {
-        QueueFamilyIndices indices;
-        uint32_t queue_family_count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
-        SherphyAssert(queue_family_count > 0, "Device Queue Family Properties is null");
-        m_device_queue_families.resize(queue_family_count);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, m_device_queue_families.data());
-
-        VkBool32 present_support = false;
-        for (size_t i = 0; i < m_device_queue_families.size(); i++)
-        {
-            if (m_device_queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
-            {
-                indices.graphics_family = i;
-            }
-
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &present_support);
-            if (present_support) 
-            {
-                indices.present_family = i;
-            }
-
-            if (indices.isComplete()) 
-            {
-                break;
-            }
-        }
-
-        return indices;
-    }
-
     void VulkanRHI::createSyncObjects() 
     {
         m_image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1803,9 +1859,9 @@ namespace Sherphy{
         fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphores[i]) == VK_SUCCESS, "failed to create image semaphore for a frame!");
-            SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]) == VK_SUCCESS, "failed to create render finish semaphore for a frame!");
-            SHERPHY_EXCEPTION_IF_FALSE(vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fences[i]) == VK_SUCCESS, "failed to create fence for a frame!");
+            SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device.m_logical_device, &semaphore_info, nullptr, &m_image_available_semaphores[i]) == VK_SUCCESS, "failed to create image semaphore for a frame!");
+            SHERPHY_EXCEPTION_IF_FALSE(vkCreateSemaphore(m_device.m_logical_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]) == VK_SUCCESS, "failed to create render finish semaphore for a frame!");
+            SHERPHY_EXCEPTION_IF_FALSE(vkCreateFence(m_device.m_logical_device, &fence_info, nullptr, &m_in_flight_fences[i]) == VK_SUCCESS, "failed to create fence for a frame!");
         }
 
         return;
@@ -1818,7 +1874,7 @@ namespace Sherphy{
             g_miracle_global_context.m_display_system->waitEvents();
         }
 
-        vkDeviceWaitIdle(m_device);
+        vkDeviceWaitIdle(m_device.m_logical_device);
 
         cleanupSwapChain();
 
@@ -1830,10 +1886,10 @@ namespace Sherphy{
 
     void VulkanRHI::drawFrame() 
     {
-        vkWaitForFences(m_device, 1, &m_in_flight_fences[m_current_frame], VK_TRUE, UINT64_MAX);
+        vkWaitForFences(m_device.m_logical_device, 1, &m_in_flight_fences[m_current_frame], VK_TRUE, UINT64_MAX);
 
         uint32_t image_index;
-        VkResult result = vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame], VK_NULL_HANDLE, &image_index);
+        VkResult result = vkAcquireNextImageKHR(m_device.m_logical_device, m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame], VK_NULL_HANDLE, &image_index);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             recreateSwapChain();
@@ -1845,10 +1901,10 @@ namespace Sherphy{
 
         updateUniformBuffer(m_current_frame);
 
-        vkResetFences(m_device, 1, &m_in_flight_fences[m_current_frame]);
+        vkResetFences(m_device.m_logical_device, 1, &m_in_flight_fences[m_current_frame]);
 
-        vkResetCommandBuffer(m_command_buffers[m_current_frame], /*VkCommandBufferResetFlagBits*/ 0);
-        recordCommandBuffer(m_command_buffers[m_current_frame], image_index);
+        vkResetCommandBuffer(m_device.m_command_buffers[m_current_frame], /*VkCommandBufferResetFlagBits*/ 0);
+        recordCommandBuffer(m_device.m_command_buffers[m_current_frame], image_index);
 
         VkSubmitInfo submit_info{};
         submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1860,7 +1916,7 @@ namespace Sherphy{
         submit_info.pWaitDstStageMask = wait_stages;
 
         submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &m_command_buffers[m_current_frame];
+        submit_info.pCommandBuffers = &m_device.m_command_buffers[m_current_frame];
 
         VkSemaphore signal_semaphores[] = { m_render_finished_semaphores[m_current_frame] };
         submit_info.signalSemaphoreCount = 1;
@@ -1897,67 +1953,59 @@ namespace Sherphy{
 
     void VulkanRHI::cleanupSwapChain() {
         for (auto image_view : m_swap_chain_image_views) {
-            vkDestroyImageView(m_device, image_view, nullptr);
+            vkDestroyImageView(m_device.m_logical_device, image_view, nullptr);
         }
 
-        vkDestroyImageView(m_device, m_depth_image_view, nullptr);
-        vkDestroyImage(m_device, m_depth_image, nullptr);
-        vkFreeMemory(m_device, m_depth_image_memory, nullptr);
+        vkDestroyImageView(m_device.m_logical_device, m_depth_image_view, nullptr);
+        vkDestroyImage(m_device.m_logical_device, m_depth_image, nullptr);
+        vkFreeMemory(m_device.m_logical_device, m_depth_image_memory, nullptr);
 
         for (auto frame_buffer : m_swap_chain_frame_buffers) {
-            vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
+            vkDestroyFramebuffer(m_device.m_logical_device, frame_buffer, nullptr);
         }
-        vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
+        vkDestroySwapchainKHR(m_device.m_logical_device, m_swap_chain, nullptr);
         return;
     }
 
     void VulkanRHI::cleanUp()
     {
-        vkDeviceWaitIdle(m_device);
+        vkDeviceWaitIdle(m_device.m_logical_device);
         cleanupSwapChain();
 
         cleanShader();
-        vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
-        vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
-        vkDestroyRenderPass(m_device, m_render_pass, nullptr);
+        vkDestroyPipeline(m_device.m_logical_device, m_graphics_pipeline, nullptr);
+        vkDestroyPipelineLayout(m_device.m_logical_device, m_pipeline_layout, nullptr);
+        vkDestroyRenderPass(m_device.m_logical_device, m_render_pass, nullptr);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            vkDestroyBuffer(m_device, m_uniform_buffers[i], nullptr);
-            vkFreeMemory(m_device, m_uniform_buffers_memory[i], nullptr);
+            m_uniform_buffers[i].destroy();
         }
-        vkDestroyDescriptorPool(m_device, m_descriptor_pool, nullptr);
+        vkDestroyDescriptorPool(m_device.m_logical_device, m_descriptor_pool, nullptr);
 
-        vkDestroySampler(m_device, m_sampler, nullptr);
-        vkDestroyImage(m_device, m_texture_image, nullptr);
-        vkFreeMemory(m_device, m_texture_image_memory, nullptr);
+        vkDestroySampler(m_device.m_logical_device, m_sampler, nullptr);
+        vkDestroyImage(m_device.m_logical_device, m_texture_image, nullptr);
+        vkFreeMemory(m_device.m_logical_device, m_texture_image_memory, nullptr);
 
-        vkDestroyDescriptorSetLayout(m_device, m_descriptor_set_layout, nullptr);
+        vkDestroyDescriptorSetLayout(m_device.m_logical_device, m_descriptor_set_layout, nullptr);
         
-        vkDestroyBuffer(m_device, m_vertex_buffer, nullptr);
-        vkFreeMemory(m_device, m_vertex_buffer_memory, nullptr);
-        vkDestroyBuffer(m_device, m_index_buffer, nullptr);
-        vkFreeMemory(m_device, m_index_buffer_memory, nullptr);
+        m_vertex_buffer.destroy();
+        m_index_buffer.destroy();
+        m_transform_buffer.destroy();
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            vkDestroySemaphore(m_device, m_render_finished_semaphores[i], nullptr);
-            vkDestroySemaphore(m_device, m_image_available_semaphores[i], nullptr);
-            vkDestroyFence(m_device, m_in_flight_fences[i], nullptr);
+            vkDestroySemaphore(m_device.m_logical_device, m_render_finished_semaphores[i], nullptr);
+            vkDestroySemaphore(m_device.m_logical_device, m_image_available_semaphores[i], nullptr);
+            vkDestroyFence(m_device.m_logical_device, m_in_flight_fences[i], nullptr);
         }
-        vkDestroyCommandPool(m_device, m_command_pool, nullptr);
+        vkDestroyCommandPool(m_device.m_logical_device, m_device.m_command_pool, nullptr);
 
-        vkDestroyDevice(m_device, nullptr);
+        vkDestroyDevice(m_device.m_logical_device, nullptr);
         if (m_enable_validation_layer) {
-            DestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
+            vkDestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
         }
 
         vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
         vkDestroyInstance(m_instance, nullptr);
-    }
-
-    void VulkanRHI::run()
-    {
-        initVulkan();
-        cleanUp();
     }
 }
 

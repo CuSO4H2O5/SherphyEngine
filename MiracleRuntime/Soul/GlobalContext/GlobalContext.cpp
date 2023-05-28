@@ -1,7 +1,7 @@
 #include "GlobalContext.h"
 #include "Resource/FileSystem.h"
 #include "JadeBreaker/Display/GLFWDisplay.h"
-#include "JadeBreaker/RHI/vulkan_rhi.h"
+#include "JadeBreaker/RHI/VulkanRHI.h"
 
 namespace Sherphy 
 {

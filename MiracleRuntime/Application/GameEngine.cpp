@@ -1,6 +1,6 @@
 #include "GameEngine.h"
 #include "World/WorldDataBase.h"
-#include "JadeBreaker/RHI/vulkan_rhi.h"
+#include "JadeBreaker/RHI/VulkanRHI.h"
 #include "Resource/SceneLoader.h"
 #include "JadeBreaker/Display/GLFWDisplay.h"
 #include "Soul/GlobalContext/GlobalContext.h"
@@ -19,7 +19,7 @@ namespace Sherphy
 		g_miracle_global_context.startSystem();
 		g_miracle_global_context.m_display_system->init(WIDTH, HEIGHT);
 		swapData();
-		g_miracle_global_context.m_rendering_system->initVulkan();
+		g_miracle_global_context.m_rendering_system->initVulkan(PipeLineType::RayTracing);
 		return;
 	}
 
@@ -61,6 +61,7 @@ namespace Sherphy
 
 	void GameEngine::shutdown() 
 	{
+		g_miracle_global_context.shutdownSystem();
 		delete m_world_data;
 	}
 }

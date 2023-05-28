@@ -17,7 +17,8 @@ endif()
 # --- Set Directories ---
 set(SHERPHY_ENGINE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(3RD_DIR "${SHERPHY_ENGINE_ROOT}/3rdparty")
-set(vulkan_include ${3RD_DIR}/VulkanSDK/include)
+set(vulkan_install_dir ${3RD_DIR}/VulkanSDK)
+set(vulkan_include ${vulkan_install_dir}/include)
 
 # --- Options ---
 option(UsingEASTL "If using eastl to faster this project development" ON)

@@ -1,4 +1,4 @@
-#include "JadeBreaker/RHI/vulkan_rhi.h"
+#include "JadeBreaker/RHI/VulkanRHI.h"
 #include "JadeBreaker/Display/GLFWDisplay.h"
 #include "GameEngine.h"
 #define VulkanBackEnd

@@ -21,8 +21,8 @@ target_link_libraries(${TARGET_NAME} PUBLIC stb)
 target_link_libraries(${TARGET_NAME} PUBLIC json11)
 target_link_libraries(${TARGET_NAME} PRIVATE tinyobjloader)
 target_link_libraries(${TARGET_NAME} PUBLIC EASTL)
+target_link_libraries(${TARGET_NAME} PUBLIC volk)
 target_link_libraries(${TARGET_NAME} PUBLIC glfw)
-target_link_libraries(${TARGET_NAME} PUBLIC glslang)
 target_link_libraries(${TARGET_NAME} PUBLIC imgui)
 target_link_libraries(${TARGET_NAME} PUBLIC ${vulkan_lib})
 
@@ -34,3 +34,4 @@ target_include_directories(
   ${glm_DIR}
 )
 
+target_compile_definitions(${TARGET_NAME} PUBLIC VK_NO_PROTOTYPES)
