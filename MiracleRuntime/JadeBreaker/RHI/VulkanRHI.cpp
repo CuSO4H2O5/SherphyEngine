@@ -220,6 +220,7 @@ namespace Sherphy{
     {
         std::vector<char> vertex_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalShader_vert.spv");
         std::vector<char> fragment_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalColorOutput_frag.spv");
+        std::vector<char> closet_shader = g_miracle_global_context.m_file_system->readBinaryFile("I:/SherphyEngine/resource/public/SherphyShaderLib/SPV/Normal/NormalColorOutput_frag.spv");
         createGraphicsPipeline(type, vertex_shader, fragment_shader);
     }
 
@@ -231,9 +232,9 @@ namespace Sherphy{
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
-        createVertexBuffer();
-        createIndexBuffer();
-        createTransformBuffer();
+        createVertexBuffer(type);
+        createIndexBuffer(type);
+        createTransformBuffer(type);
         createUniformBuffers();
         createDescriptorPool(type);
         createDescriptorSets(type);
@@ -374,8 +375,8 @@ namespace Sherphy{
         m_uniform_buffers.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                m_uniform_buffers[i]);
+            SHERPHY_ASSERT(m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_uniform_buffers[i]), VK_SUCCESS, "");
 
             vkMapMemory(m_device.m_logical_device, m_uniform_buffers[i].memory, 0, buffer_size, 0, &m_uniform_buffers[i].mapped);
         }
@@ -445,7 +446,7 @@ namespace Sherphy{
         create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         create_info.bindingCount = static_cast<uint32_t>(bindings.size());
         create_info.pBindings = bindings.data();
-        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device.m_logical_device, &create_info, nullptr, &m_descriptor_set_layout), "RayTracing Descriptor Layout Creation Failed");
+        SHERPHY_EXCEPTION_IF_FALSE(vkCreateDescriptorSetLayout(m_device.m_logical_device, &create_info, nullptr, &m_descriptor_set_layout) == VK_SUCCESS, "RayTracing Descriptor Layout Creation Failed");
     }
 
     void VulkanRHI::createDescriptorSetLayoutNormal() 
@@ -475,45 +476,79 @@ namespace Sherphy{
         return;
     }
 
-    void VulkanRHI::createVertexBuffer() 
+    void VulkanRHI::createVertexBuffer(PipeLineType type) 
     {
         SHERPHY_EXCEPTION_IF_FALSE(m_vertices.size() != 0, "no vertices input\n");
         VkDeviceSize buffer_size = sizeof(m_vertices[0]) * m_vertices.size();
+        switch (type)
+        {
+        case Sherphy::PipeLineType::RayTracing:
+            SHERPHY_ASSERT(m_device.createBuffer(buffer_size,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_vertex_buffer,
+                m_vertices.data()), VK_SUCCESS, "");
+            break;
+        default:
+            VulkanBuffer staging_buffer;
+            SHERPHY_ASSERT(m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                staging_buffer, m_vertices.data()), VK_SUCCESS, "");
 
-        VulkanBuffer staging_buffer;
-        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     staging_buffer, m_vertices.data());
+            SHERPHY_ASSERT(m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                m_vertex_buffer), VK_SUCCESS, "");
 
-        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                     m_vertex_buffer);
+            copyBufferImmediate(staging_buffer, m_vertex_buffer, buffer_size);
 
-        copyBufferImmediate(staging_buffer, m_vertex_buffer, buffer_size);
-
-        staging_buffer.destroy();
+            staging_buffer.destroy();
+            break;
+        }
     }
 
-    void VulkanRHI::createIndexBuffer() 
+    void VulkanRHI::createIndexBuffer(PipeLineType type)
     {
         VkDeviceSize buffer_size = sizeof(m_indices[0]) * m_indices.size();
 
-        VulkanBuffer staging_buffer;
-        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, m_indices.data());
+        switch (type)
+        {
+        case Sherphy::PipeLineType::RayTracing:
+            SHERPHY_ASSERT(m_device.createBuffer(buffer_size,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_index_buffer,
+                m_indices.data()), VK_SUCCESS, "");
+            break;
+        default:
+            VulkanBuffer staging_buffer;
+            SHERPHY_ASSERT(m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, m_indices.data()), VK_SUCCESS, "");
 
-        m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_index_buffer);
+            SHERPHY_ASSERT(m_device.createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_index_buffer), VK_SUCCESS, "");
 
-        copyBufferImmediate(staging_buffer, m_index_buffer, buffer_size);
+            copyBufferImmediate(staging_buffer, m_index_buffer, buffer_size);
 
-        staging_buffer.destroy();
+            staging_buffer.destroy();
+            break;
+        }
     }
 
-    void VulkanRHI::createTransformBuffer() 
+    void VulkanRHI::createTransformBuffer(PipeLineType type)
     {
-        SHERPHY_ASSERT(m_device.createBuffer(sizeof(VkTransformMatrixKHR),
-            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            m_transform_buffer, &m_transform_matrix), VK_SUCCESS, "");
+        switch (type)
+        {
+        case Sherphy::PipeLineType::RayTracing:
+            SHERPHY_ASSERT(m_device.createBuffer(sizeof(VkTransformMatrixKHR),
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_transform_buffer, &m_transform_matrix), VK_SUCCESS, "");
+            break;
+        default:
+            SHERPHY_ASSERT(m_device.createBuffer(sizeof(VkTransformMatrixKHR),
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_transform_buffer, &m_transform_matrix), VK_SUCCESS, "");
+            break;
+        }
     }
 
     void VulkanRHI::copyBufferImmediate(VulkanBuffer src_buffer, VulkanBuffer dst_buffer, VkDeviceSize size)
@@ -624,7 +659,7 @@ namespace Sherphy{
         SHERPHY_EXCEPTION_IF_FALSE(pixels, "failed to load texture image!");
 
         VulkanBuffer staging_buffer;
-        m_device.createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer);
+        SHERPHY_ASSERT(m_device.createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer), VK_SUCCESS, "");
 
         void* data;
         vkMapMemory(m_device.m_logical_device, staging_buffer.memory, 0, image_size, 0, &data);
@@ -1101,9 +1136,9 @@ namespace Sherphy{
 
         // Create a small scratch buffer used during build of the top level acceleration structure
         VulkanBuffer scratch_buffer;
-        m_device.createBuffer(acceleration_structure_build_sizes_info.buildScratchSize,
+        SHERPHY_ASSERT(m_device.createBuffer(acceleration_structure_build_sizes_info.buildScratchSize,
                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch_buffer);
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch_buffer), VK_SUCCESS, "");
 
         VkAccelerationStructureBuildGeometryInfoKHR acceleration_build_geometry_info{};
         acceleration_build_geometry_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -1216,9 +1251,9 @@ namespace Sherphy{
 
         // Create a small scratch buffer used during build of the bottom level acceleration structure
         VulkanBuffer scratch_buffer;
-        m_device.createBuffer(acceleration_structure_build_sizes_info.buildScratchSize,
+        SHERPHY_ASSERT(m_device.createBuffer(acceleration_structure_build_sizes_info.buildScratchSize,
                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch_buffer);
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scratch_buffer), VK_SUCCESS, "");
 
         VkAccelerationStructureBuildGeometryInfoKHR acceleration_build_geometry_info{};
         acceleration_build_geometry_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;

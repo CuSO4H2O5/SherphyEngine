@@ -19,7 +19,7 @@ namespace Sherphy
 		g_miracle_global_context.startSystem();
 		g_miracle_global_context.m_display_system->init(WIDTH, HEIGHT);
 		swapData();
-		g_miracle_global_context.m_rendering_system->initVulkan(PipeLineType::RayTracing);
+		g_miracle_global_context.m_rendering_system->initVulkan(PipeLineType::Normal);
 		return;
 	}
 

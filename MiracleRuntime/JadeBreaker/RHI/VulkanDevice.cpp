@@ -6,7 +6,7 @@
 
 namespace Sherphy 
 {
-    void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface, VkPhysicalDeviceFeatures enabled_features, const std::vector<const char*>& enabled_extensions, const void* pNext_chain, bool use_swap_chain)
+    void VulkanDevice::createLogicalDevice(VkSurfaceKHR surface, VkPhysicalDeviceFeatures enabled_features, const std::vector<const char*>& enabled_extensions, void* pNext_chain, bool use_swap_chain)
     {
         m_queue_family_indices = findQueueFamilies(m_physical_device, surface);
 
@@ -38,6 +38,16 @@ namespace Sherphy
         create_info.pEnabledFeatures = &enabled_features;
         create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
         create_info.ppEnabledExtensionNames = device_extensions.data();
+
+        VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+        if (pNext_chain) {
+            physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+            physicalDeviceFeatures2.features = enabled_features;
+            physicalDeviceFeatures2.pNext = pNext_chain;
+            create_info.pEnabledFeatures = nullptr;//must set to nullptr when set feature2
+            create_info.pNext = &physicalDeviceFeatures2;
+        }
+
 
         SHERPHY_EXCEPTION_IF_FALSE((vkCreateDevice(m_physical_device, &create_info, nullptr, &m_logical_device) == VK_SUCCESS), "faild to create logical device");
         m_command_pool = createCommandPool();
@@ -93,10 +103,16 @@ namespace Sherphy
         VkMemoryRequirements mem_requirements;
         vkGetBufferMemoryRequirements(m_logical_device, buffer.buffer, &mem_requirements);
 
-        VkMemoryAllocateInfo alloc_info{};
-        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        VkMemoryAllocateInfo alloc_info = vki::memoryAllocateInfo();
         alloc_info.allocationSize = mem_requirements.size;
         alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
+        // If the buffer has VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT set we also need to enable the appropriate flag during allocation
+        VkMemoryAllocateFlagsInfoKHR alloc_flags_info{};
+        if (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+            alloc_flags_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO_KHR;
+            alloc_flags_info.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+            alloc_info.pNext = &alloc_flags_info;
+        }
 
         SHERPHY_EXCEPTION_IF_FALSE(vkAllocateMemory(m_logical_device, &alloc_info, nullptr, &buffer.memory) == VK_SUCCESS, "failed to allocate vertex buffer memory!");
 

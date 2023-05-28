@@ -34,6 +34,13 @@ namespace Sherphy
 			return fence_create_info;
 		}
 
+		inline VkMemoryAllocateInfo memoryAllocateInfo()
+		{
+			VkMemoryAllocateInfo memAllocInfo{};
+			memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+			return memAllocInfo;
+		}
+
 		inline VkCommandBufferBeginInfo commandBufferBeginInfo()
 		{
 			VkCommandBufferBeginInfo cmdBufferBeginInfo{};

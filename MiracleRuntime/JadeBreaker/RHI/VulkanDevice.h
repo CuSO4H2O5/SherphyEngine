@@ -43,7 +43,7 @@ namespace Sherphy
 		void createLogicalDevice(VkSurfaceKHR surface, 
 								 VkPhysicalDeviceFeatures enabled_features,
 								 const std::vector<const char*>& enabled_extensions,
-								 const void* pNext_chain, bool use_swap_chain = true);
+								 void* pNext_chain, bool use_swap_chain = true);
 		VkCommandBuffer createCommandBuffer(VkCommandBufferLevel level, bool begin = false, VkCommandBufferUsageFlags flags = 0);
 		VkCommandBuffer beginSingleTimeCommands();
 		void endSingleTimeCommands(VkCommandBuffer commandBuffer, VkQueue queue);

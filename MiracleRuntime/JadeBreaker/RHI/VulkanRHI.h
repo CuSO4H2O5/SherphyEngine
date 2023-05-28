@@ -105,9 +105,9 @@ namespace Sherphy{
                                    VkImageLayout old_layout, 
                                    VkImageLayout new_layout);
         void createFrameBuffers();
-        void createVertexBuffer();
-        void createIndexBuffer();
-        void createTransformBuffer();
+        void createVertexBuffer(PipeLineType type);
+        void createIndexBuffer(PipeLineType type);
+        void createTransformBuffer(PipeLineType type);
         void createDepthResources();
         VkFormat findDepthFormat();
         VkFormat findSupportedFormat(VkPhysicalDevice device, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
