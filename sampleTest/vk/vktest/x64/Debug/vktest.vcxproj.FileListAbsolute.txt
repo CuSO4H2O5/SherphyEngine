@@ -1,1 +1,0 @@
-I:\SherphyEngine\sampleTest\vk\vktest\x64\Debug\vktest.exe
